@@ -376,7 +376,8 @@ export function adminOp(op: string, a: Args) {
         const label = str(a.label, 24);
         const seats = int(a.seats, 1, 40, 4);
         if (!label) throw new ApiError("Give the table a name, like T7 or Patio 2.");
-        if (db.tables.some((t) => t.label.toLowerCase() === label.toLowerCase() && t.id !== a.id)) throw new ApiError(`${label} already exists.`);
+        const clash = db.tables.find((t) => t.label.toLowerCase() === label.toLowerCase() && t.id !== a.id);
+        if (clash) throw new ApiError(`${clash.label} already exists.`);
         if (a.id) {
           const t = find(db.tables, a.id, "Table");
           t.label = label;

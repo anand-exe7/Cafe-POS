@@ -20,8 +20,8 @@ const ST: Record<Order["status"], [BadgeTone, string]> = {
 };
 const PAY = { cash: "Cash", upi: "UPI", card: "Card" } as const;
 
-const th = "px-4 py-4 text-left text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-500 whitespace-nowrap";
-const td = "px-4 py-4 text-[13px] whitespace-nowrap";
+const th = "px-3 py-4 text-left text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-500 whitespace-nowrap";
+const td = "px-3 py-4 text-[13px] whitespace-nowrap";
 
 function Chip({ on, children, onClick, tone = "red" }: { on: boolean; children: React.ReactNode; onClick: () => void; tone?: "red" | "link" }) {
   if (tone === "link")
@@ -281,7 +281,7 @@ export default function OrdersPage() {
               </tbody>
             </table>
           ) : (
-            <table className="w-full min-w-[1100px]">
+            <table className="w-full min-w-[1000px]">
               <thead>
                 <tr className="border-b border-slate-100">
                   <th className={th}>Invoice no</th>

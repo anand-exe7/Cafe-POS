@@ -336,7 +336,7 @@ export function Pills<T extends string>({ label, value, options, onChange, class
 /** Underlined tabs: REVENUE  TODAY'S SALES … */
 export function Tabs<T extends string>({ value, options, onChange }: { value: T; options: { v: T; t: string; n?: number }[]; onChange: (v: T) => void }) {
   return (
-    <div className="mb-7 flex gap-7 overflow-x-auto border-b border-slate-200 adm-scroll">
+    <div className="mb-7 flex gap-7 overflow-x-auto overflow-y-hidden border-b border-slate-200 adm-scroll">
       {options.map((o) => (
         <button
           key={o.v}

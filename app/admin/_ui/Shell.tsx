@@ -206,7 +206,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* toasts */}
-        <div className="pointer-events-none fixed right-3 top-3 z-[90] flex w-[min(380px,calc(100%-24px))] flex-col gap-2 sm:right-5 sm:top-5" aria-live="polite">
+        <div className="pointer-events-none fixed bottom-3 left-3 z-[90] flex w-[min(380px,calc(100%-24px))] flex-col gap-2 sm:bottom-5 sm:left-5 lg:left-[268px]" aria-live="polite">
           {toasts.map((t) => (
             <div
               key={t.id}

@@ -243,23 +243,23 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
                 </Btn>
               </div>
             </div>
-            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-              <div className="hidden grid-cols-[minmax(0,1fr)_104px_112px_120px_40px] gap-3 sm:grid">
+            <div className="@container space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+              <div className="hidden grid-cols-[minmax(0,1fr)_104px_112px_120px_40px] gap-3 @2xl:grid">
                 <span className={lbl}>Item name / description</span>
                 <span />
                 <span className={lbl}>Price (₹)</span>
                 <span className={lbl}>Qty</span>
               </div>
               {lines.map((l) => (
-                <div key={l.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-200/70 pb-3 last:border-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_104px_112px_120px_40px] sm:items-start">
+                <div key={l.key} className="grid grid-cols-[auto_minmax(0,1fr)_128px_48px] gap-3 border-b border-slate-200/70 pb-3 last:border-0 last:pb-0 @2xl:grid-cols-[minmax(0,1fr)_104px_112px_120px_40px] @2xl:items-start">
                   <textarea
                     rows={2}
-                    className="col-span-2 min-h-[60px] w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-[14px] outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50 sm:col-span-1"
+                    className="col-span-4 min-h-[60px] w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-[14px] outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50 @2xl:col-span-1"
                     placeholder="Type custom product description…"
                     value={l.name}
                     onChange={(e) => setLine(l.key, { name: e.target.value })}
                   />
-                  <button type="button" onClick={() => setPicker(l.key)} className="flex h-[48px] items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50 text-[13px] font-bold text-red-600 transition hover:bg-red-100">
+                  <button type="button" onClick={() => setPicker(l.key)} className="flex h-[48px] items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 text-[13px] font-bold text-red-600 transition hover:bg-red-100">
                     <Icon name="list" size={16} /> Catalog
                   </button>
                   <input
@@ -290,7 +290,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
                   <button
                     type="button"
                     onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [blank()]))}
-                    className="grid h-[48px] w-full place-items-center rounded-xl border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100 sm:w-10"
+                    className="grid h-[48px] w-full place-items-center rounded-xl border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
                     aria-label="Remove item"
                   >
                     <Icon name="trash" size={17} />

@@ -1,5 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Table ordering & admin
+
+- **Guests** scan a table QR → `/t/<code>` (the landing page, with "Order now" going to that table) → `/t/<code>/menu` to order. Orders land in the admin instantly; guests can track status and ask for the bill, then pay at the counter.
+- **Admin** lives at `/admin`: Tables (live floor, table CRUD, QR codes), Analytics, Orders, Billing (POS), Coupons, Inventory. The first visit asks you to choose the admin password; or set `ADMIN_PASSWORD` in `.env.local` to fix it from the server.
+- **Billing a table** closes its tab and frees the table, so the next guests start fresh.
+- **QR address:** set Settings → "Public address for QR codes" to the address phones can reach (your domain, or this computer's Wi-Fi IP like `http://192.168.1.20:3000`) before printing QR cards.
+- **Data** is stored in `data/db.json` (git-ignored; created with the menu, 6 tables and one sample coupon on first run). Run it on one always-on Node server (`npm run build && npm start`). Serverless hosts such as Vercel don't keep files between requests, so this store won't persist there; use a real database if you deploy to one.
+
 ## Getting Started
 
 First, run the development server:
