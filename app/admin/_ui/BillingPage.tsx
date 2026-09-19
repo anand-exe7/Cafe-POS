@@ -1,0 +1,502 @@
+"use client";
+
+import { useState } from "react";
+import type { Bill, DiscountType, OrderItem, PayMethod } from "@/lib/types";
+import { checkCoupon, computeBill, couponStatus, mergeItems, rupee } from "@/lib/money";
+import { useAdmin, type FloorTable } from "./Store";
+import Catalog from "./Catalog";
+import { Receipt, billText, waLink } from "./receipt";
+import { Badge, Btn, Icon, Modal, WaIcon, cx, fmtTime, ago } from "./kit";
+
+type Line = { key: number; productId: string | null; name: string; price: string; qty: number };
+
+const box = "rounded-[22px] border border-slate-100 bg-white p-5 shadow-[0_2px_12px_-4px_rgba(15,23,42,.1)] sm:p-6";
+const lbl = "mb-2 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700";
+const big = "h-[52px] w-full rounded-xl border border-slate-300 bg-white px-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
+const okPhone = (p: string) => /^(\+?91)?[6-9]\d{9}$/.test(p.replace(/[\s-]/g, ""));
+const sigOf = (f: FloorTable) => f.orders.map((o) => o.id + o.status).join("|");
+
+let seq = 0;
+const blank = (): Line => ({ key: ++seq, productId: null, name: "", price: "", qty: 1 });
+const linesOf = (f: FloorTable): Line[] => {
+  const items = mergeItems(f.orders.filter((o) => o.status !== "cancelled").flatMap((o) => o.items));
+  return items.length ? items.map((i) => ({ key: ++seq, productId: i.productId, name: i.name, price: String(i.price), qty: i.qty })) : [blank()];
+};
+
+export default function BillingPage({ tableId }: { tableId?: string }) {
+  const { s, floor, act, print, now } = useAdmin();
+  const shop = s.settings.shopName;
+
+  const openTabs = floor.filter((f) => f.session);
+  const start = tableId ? floor.find((f) => f.table.id === tableId && f.session) : undefined;
+
+  const [mode, setMode] = useState<"table" | "counter">(tableId || openTabs.length ? "table" : "counter");
+  const [sel, setSel] = useState<string | null>(start?.table.id ?? null);
+  const [lines, setLines] = useState<Line[]>(() => (start ? linesOf(start) : [blank()]));
+  const [name, setName] = useState(start?.session?.customerName ?? "");
+  const [phone, setPhone] = useState(start?.session?.customerPhone ?? "");
+  const [sig, setSig] = useState(start ? sigOf(start) : "");
+  const [coupon, setCoupon] = useState("");
+  const [mType, setMType] = useState<DiscountType>("amount");
+  const [mVal, setMVal] = useState("");
+  const [extra, setExtra] = useState("");
+  const [pay, setPay] = useState<PayMethod>("cash");
+  const [received, setReceived] = useState("");
+  const [picker, setPicker] = useState<number | null>(null);
+  const [done, setDone] = useState<Bill | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const f = mode === "table" && sel ? floor.find((x) => x.table.id === sel && x.session) ?? null : null;
+  const stale = f && sig && sigOf(f) !== sig;
+  const lost = mode === "table" && sel && !f;
+
+  const reset = (keepMode = true) => {
+    setSel(null);
+    setLines([blank()]);
+    setName("");
+    setPhone("");
+    setSig("");
+    setCoupon("");
+    setMType("amount");
+    setMVal("");
+    setExtra("");
+    setPay("cash");
+    setReceived("");
+    if (!keepMode) setMode("counter");
+  };
+
+  const pickTable = (x: FloorTable) => {
+    setSel(x.table.id);
+    setLines(linesOf(x));
+    setName(x.session?.customerName ?? "");
+    setPhone(x.session?.customerPhone ?? "");
+    setSig(sigOf(x));
+  };
+
+  const setLine = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+
+  /* ---------- totals ---------- */
+  const items: OrderItem[] = lines
+    .filter((l) => l.name.trim() || Number(l.price) > 0)
+    .map((l) => ({ productId: l.productId, name: l.name.trim(), price: Math.max(0, Number(l.price) || 0), qty: l.qty }));
+  const cp = s.coupons.find((c) => c.code === coupon) ?? null;
+  const calc = computeBill({ items, coupon: cp, manualType: mType, manualValue: Number(mVal) || 0, extra: Number(extra) || 0 });
+  const recv = Number(received) || 0;
+  const change = pay === "cash" && recv > 0 ? recv - calc.total : 0;
+
+  const problems: string[] = [];
+  if (mode === "table" && !f) problems.push("Pick a table with an open tab.");
+  if (!items.length) problems.push("Add at least one item.");
+  if (items.some((i) => !i.name)) problems.push("Every item needs a name.");
+  if (cp && calc.couponOk && !calc.couponOk.ok) problems.push(`Coupon ${cp.code}: ${calc.couponOk.reason}.`);
+  if (pay === "cash" && recv > 0 && recv < calc.total) problems.push("Amount received is less than the total.");
+  if (phone && !okPhone(phone)) problems.push("Mobile should be a 10-digit number.");
+  const ready = !problems.length && !busy;
+
+  const complete = async (via: "wa" | "print" | "none") => {
+    if (!ready) return;
+    const w = via === "wa" ? window.open("about:blank", "_blank") : null;
+    setBusy(true);
+    const r = await act<Bill>("bill.create", {
+      source: mode,
+      tableId: f?.table.id,
+      customerName: name,
+      customerPhone: phone,
+      items,
+      couponCode: coupon || null,
+      manualType: mType,
+      manualValue: mVal,
+      extra,
+      payment: pay,
+      received,
+    });
+    setBusy(false);
+    if (!r.ok) {
+      w?.close();
+      return;
+    }
+    const b = r.result;
+    if (w) w.location.href = waLink(b.customerPhone, billText(b, shop));
+    if (via === "print") print(<Receipt b={b} shop={shop} />);
+    setDone(b);
+    reset();
+  };
+
+  const couponOptions = s.coupons.filter((c) => couponStatus(c) === "active" || c.code === coupon);
+
+  return (
+    <div className="adm-in rounded-[28px] bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.1)] sm:p-7">
+      {/* ---------- header ---------- */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="h-7 w-[5px] rounded-full bg-red-600" />
+          <h1 className="adm-num text-[24px] font-extrabold tracking-tight text-slate-900">POS Billing Panel</h1>
+          <span className="hidden h-5 w-px bg-slate-300 sm:block" />
+          <span className="text-[13px] text-slate-500">Quick invoice generator &amp; database synced checkout</span>
+        </div>
+        <div className="flex rounded-2xl bg-slate-100 p-1">
+          {(
+            [
+              ["table", "Table bill", "bg-red-500"],
+              ["counter", "Counter (walk-in)", "bg-emerald-500"],
+            ] as const
+          ).map(([m, t, dot]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => {
+                if (m === mode) return;
+                setMode(m);
+                reset();
+              }}
+              className={cx("flex h-10 items-center gap-2 rounded-xl px-4 text-[12.5px] font-extrabold uppercase tracking-wide transition", mode === m ? "bg-white text-slate-900 shadow" : "text-slate-500 hover:text-slate-800")}
+            >
+              <span className={cx("h-2 w-2 rounded-full", dot)} />
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_470px]">
+        {/* ================= left ================= */}
+        <div className="space-y-5">
+          {mode === "table" && (
+            <section className={box}>
+              <h2 className="mb-4 flex items-center gap-2.5 text-[18px] font-bold text-slate-900">
+                <Icon name="tables" size={20} className="text-red-600" /> Select Table
+              </h2>
+              {openTabs.length ? (
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 2xl:grid-cols-4">
+                  {openTabs.map((x) => (
+                    <button
+                      key={x.table.id}
+                      type="button"
+                      onClick={() => pickTable(x)}
+                      className={cx(
+                        "relative rounded-2xl border p-3 text-left transition",
+                        sel === x.table.id ? "border-red-400 bg-red-50 ring-4 ring-red-50" : "border-slate-200 hover:border-slate-400",
+                      )}
+                    >
+                      <span className="flex items-center justify-between">
+                        <b className="adm-num text-[20px] font-extrabold text-slate-900">{x.table.label}</b>
+                        {x.billRequested && <span className="adm-pulse h-2.5 w-2.5 rounded-full bg-amber-400 text-amber-400" title="Asked for the bill" />}
+                      </span>
+                      <span className="adm-num block text-[15px] font-bold text-red-600">{rupee(x.total)}</span>
+                      <span className="block truncate text-[11.5px] text-slate-500">
+                        {x.session?.customerName || "Guest"} · {ago(x.session!.openedAt, now)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-500">No open tabs right now. Tabs open automatically when a table orders — or switch to Counter for a walk-in.</p>
+              )}
+              {stale && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+                  <span>
+                    <b>{f!.table.label}</b> has new activity since you opened it.
+                  </span>
+                  <Btn size="sm" kind="dark" icon="refresh" onClick={() => pickTable(f!)}>
+                    Reload items
+                  </Btn>
+                </div>
+              )}
+              {lost && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800">
+                  <span>That tab was just closed from another screen.</span>
+                  <Btn size="sm" onClick={() => reset()}>
+                    Start over
+                  </Btn>
+                </div>
+              )}
+            </section>
+          )}
+
+          <section className={box}>
+            <h2 className="mb-5 flex items-center gap-2.5 text-[18px] font-bold text-slate-900">
+              <Icon name="users" size={20} className="text-red-600" /> Customer Details
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label>
+                <span className={lbl}>Customer name</span>
+                <input className={big} value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter name" maxLength={60} />
+              </label>
+              <label>
+                <span className={lbl}>Mobile number (WhatsApp)</span>
+                <input className={cx(big, phone && !okPhone(phone) && "border-red-400")} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Enter 10-digit number" inputMode="tel" maxLength={14} />
+              </label>
+            </div>
+          </section>
+
+          <section className={box}>
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2.5 text-[18px] font-bold text-slate-900">
+                <Icon name="orders" size={20} className="text-red-600" /> Order Items
+              </h2>
+              <div className="flex gap-2">
+                <Btn size="md" className="border-0 bg-slate-100 hover:bg-slate-200" onClick={() => setLines([blank()])}>
+                  Clear Order
+                </Btn>
+                <Btn size="md" kind="soft" className="text-[14px] font-bold" onClick={() => setLines((ls) => [...ls, blank()])}>
+                  + Add Custom Item
+                </Btn>
+              </div>
+            </div>
+            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+              <div className="hidden grid-cols-[minmax(0,1fr)_104px_112px_120px_40px] gap-3 sm:grid">
+                <span className={lbl}>Item name / description</span>
+                <span />
+                <span className={lbl}>Price (₹)</span>
+                <span className={lbl}>Qty</span>
+              </div>
+              {lines.map((l) => (
+                <div key={l.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-200/70 pb-3 last:border-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_104px_112px_120px_40px] sm:items-start">
+                  <textarea
+                    rows={2}
+                    className="col-span-2 min-h-[60px] w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-[14px] outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50 sm:col-span-1"
+                    placeholder="Type custom product description…"
+                    value={l.name}
+                    onChange={(e) => setLine(l.key, { name: e.target.value })}
+                  />
+                  <button type="button" onClick={() => setPicker(l.key)} className="flex h-[48px] items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50 text-[13px] font-bold text-red-600 transition hover:bg-red-100">
+                    <Icon name="list" size={16} /> Catalog
+                  </button>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    inputMode="decimal"
+                    className="h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                    value={l.price}
+                    onChange={(e) => setLine(l.key, { price: e.target.value })}
+                    aria-label="Price"
+                  />
+                  <div className="flex h-[48px] items-center overflow-hidden rounded-xl border border-red-200 bg-white">
+                    <button type="button" className="h-full w-10 text-[18px] font-bold text-red-600 hover:bg-red-50" onClick={() => setLine(l.key, { qty: Math.max(1, l.qty - 1) })} aria-label="Less">
+                      −
+                    </button>
+                    <input
+                      className="h-full w-full min-w-0 border-x border-red-100 text-center text-[15px] font-bold outline-none"
+                      value={l.qty}
+                      inputMode="numeric"
+                      onChange={(e) => setLine(l.key, { qty: Math.max(1, Math.min(999, parseInt(e.target.value.replace(/\D/g, "")) || 1)) })}
+                      aria-label="Quantity"
+                    />
+                    <button type="button" className="h-full w-10 text-[18px] font-bold text-red-600 hover:bg-red-50" onClick={() => setLine(l.key, { qty: Math.min(999, l.qty + 1) })} aria-label="More">
+                      +
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [blank()]))}
+                    className="grid h-[48px] w-full place-items-center rounded-xl border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100 sm:w-10"
+                    aria-label="Remove item"
+                  >
+                    <Icon name="trash" size={17} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {/* ================= right: summary ================= */}
+        <aside className="xl:sticky xl:top-6 xl:self-start">
+          <div className={cx(box, "space-y-5")}>
+            <dl className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-slate-50/70 px-4 text-[12px]">
+              <div className="flex items-center justify-between py-3">
+                <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Source</dt>
+                <dd>{mode === "table" ? <Badge tone="red">{f ? `Table ${f.table.label}` : "Table"}</Badge> : <Badge tone="green">Counter</Badge>}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 py-3">
+                <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Customer</dt>
+                <dd className="truncate font-semibold text-slate-800">{name || "-"}</dd>
+              </div>
+              <div className="flex items-center justify-between py-3">
+                <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Phone</dt>
+                <dd className="font-semibold text-slate-800">{phone || "-"}</dd>
+              </div>
+              {f?.session && (
+                <div className="flex items-center justify-between py-3">
+                  <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Seated</dt>
+                  <dd className="font-semibold text-slate-800">
+                    {fmtTime(f.session.openedAt)} · {f.session.guests} guests
+                  </dd>
+                </div>
+              )}
+            </dl>
+
+            {items.length ? (
+              <ul className="adm-scroll max-h-56 space-y-2 overflow-y-auto pr-1 text-[13px]">
+                {items.map((i, k) => (
+                  <li key={k} className="flex justify-between gap-3">
+                    <span className="min-w-0 truncate text-slate-700">
+                      <b>{i.qty}×</b> {i.name || <em className="text-slate-400">unnamed</em>}
+                    </span>
+                    <b className="shrink-0">{rupee(i.price * i.qty)}</b>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="py-3 text-center text-[12.5px] text-slate-400">No items added yet</p>
+            )}
+
+            <div className="border-t border-dashed border-slate-200 pt-5">
+              <span className={lbl}>Apply coupon</span>
+              <select className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-[14px] font-semibold text-slate-800 outline-none focus:border-red-400" value={coupon} onChange={(e) => setCoupon(e.target.value)}>
+                <option value="">No Coupon</option>
+                {couponOptions.map((c) => {
+                  const ok = checkCoupon(c, calc.subtotal);
+                  return (
+                    <option key={c.id} value={c.code} disabled={!ok.ok && c.code !== coupon}>
+                      {c.code} — {c.percent}% off{c.minOrder ? ` (min ${rupee(c.minOrder)})` : ""}
+                      {!ok.ok ? ` · ${ok.reason}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+              {cp && calc.couponOk?.ok && <p className="mt-2 text-[12px] font-semibold text-emerald-600">{cp.code} applied — saves {rupee(calc.couponDiscount)}</p>}
+              {cp && calc.couponOk && !calc.couponOk.ok && <p className="mt-2 text-[12px] font-semibold text-red-600">{calc.couponOk.reason}</p>}
+            </div>
+
+            <div className="border-t border-dashed border-slate-200 pt-5">
+              <span className={lbl}>Manual discount</span>
+              <div className="flex gap-2">
+                <select className="h-12 w-[84px] rounded-xl border border-red-200 bg-white px-3 text-[14px] font-bold outline-none focus:border-red-400" value={mType} onChange={(e) => setMType(e.target.value as DiscountType)} aria-label="Discount type">
+                  <option value="amount">₹</option>
+                  <option value="percent">%</option>
+                </select>
+                <input type="number" min={0} inputMode="decimal" placeholder="0" className="h-12 flex-1 rounded-xl border border-red-200 bg-white px-4 text-right text-[15px] outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50" value={mVal} onChange={(e) => setMVal(e.target.value)} aria-label="Discount value" />
+              </div>
+            </div>
+
+            <dl className="space-y-3 border-t border-dashed border-slate-200 pt-5 text-[14px]">
+              <div className="flex justify-between">
+                <dt className="text-slate-600">Subtotal ({calc.itemCount} items)</dt>
+                <dd className="font-semibold">{rupee(calc.subtotal)}</dd>
+              </div>
+              {calc.couponDiscount > 0 && (
+                <div className="flex justify-between text-red-600">
+                  <dt>Coupon {cp?.code}</dt>
+                  <dd className="font-semibold">-{rupee(calc.couponDiscount)}</dd>
+                </div>
+              )}
+              {calc.manualDiscount > 0 && (
+                <div className="flex justify-between text-red-600">
+                  <dt>Discount</dt>
+                  <dd className="font-semibold">-{rupee(calc.manualDiscount)}</dd>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <dt className="text-slate-600">Extra charges</dt>
+                <dd>
+                  <input type="number" min={0} inputMode="decimal" placeholder="0" className="h-10 w-24 rounded-lg border border-slate-300 px-3 text-right text-[14px] outline-none focus:border-red-400" value={extra} onChange={(e) => setExtra(e.target.value)} aria-label="Extra charges" />
+                </dd>
+              </div>
+            </dl>
+
+            <div className="flex items-center justify-between border-t border-slate-200 pt-5">
+              <span className="text-[17px] font-extrabold uppercase tracking-[0.04em] text-slate-900">Grand total</span>
+              <b className="adm-num text-[26px] font-extrabold text-slate-900">{rupee(calc.total)}</b>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Payment</span>
+                <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+                  {(["cash", "upi", "card"] as const).map((p) => (
+                    <button key={p} type="button" onClick={() => setPay(p)} className={cx("h-8 rounded-lg px-3 text-[12px] font-bold uppercase transition", pay === p ? "bg-white text-slate-900 shadow" : "text-slate-500")}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {pay === "cash" ? (
+                <>
+                  <span className="mb-2 block text-[12px] font-bold text-slate-700">Amount Received (₹)</span>
+                  <input type="number" min={0} inputMode="decimal" placeholder={calc.total ? calc.total.toFixed(2) : "0.00"} className="h-14 w-full rounded-xl border border-red-200 px-4 text-[20px] font-bold outline-none placeholder:text-slate-300 focus:border-red-400 focus:ring-4 focus:ring-red-50" value={received} onChange={(e) => setReceived(e.target.value)} />
+                  {recv > 0 && (
+                    <p className={cx("mt-2 flex justify-between text-[13px] font-semibold", change < 0 ? "text-red-600" : "text-emerald-600")}>
+                      <span>{change < 0 ? "Still due" : "Change to return"}</span>
+                      <span>{rupee(Math.abs(change))}</span>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-[12.5px] text-slate-500">Collect {rupee(calc.total)} by {pay === "upi" ? "UPI" : "card"}, then complete the bill.</p>
+              )}
+            </div>
+
+            {problems.length > 0 && (items.length > 0 || mode === "table") && <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">{problems[0]}</p>}
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={!ready || !okPhone(phone)}
+                onClick={() => complete("wa")}
+                title={!okPhone(phone) ? "Add the customer's 10-digit mobile to send on WhatsApp" : undefined}
+                className="flex h-14 w-full items-center justify-center gap-2.5 rounded-xl bg-[#22c55e] text-[15px] font-extrabold uppercase tracking-[0.06em] text-white shadow-[0_10px_22px_-12px_rgba(22,163,74,.9)] transition hover:bg-[#16a34a] active:scale-[.99] disabled:opacity-45"
+              >
+                <WaIcon size={20} /> Send bill via WhatsApp
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <Btn size="lg" kind="dark" icon="print" disabled={!ready} onClick={() => complete("print")} className="uppercase">
+                  Save &amp; print
+                </Btn>
+                <Btn size="lg" disabled={!ready} onClick={() => complete("none")} className="uppercase">
+                  Save only
+                </Btn>
+              </div>
+              {mode === "table" && f && <p className="pt-1 text-center text-[11.5px] text-slate-400">Completing closes {f.table.label}&apos;s tab — the next guests start fresh.</p>}
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <Catalog
+        open={picker !== null}
+        onClose={() => setPicker(null)}
+        title="Pick from catalog"
+        onPick={(p) => picker !== null && setLine(picker, { productId: p.id, name: p.name, price: String(p.price) })}
+      />
+
+      <Modal
+        open={!!done}
+        onClose={() => setDone(null)}
+        title="Bill saved"
+        footer={
+          done && (
+            <>
+              {done.customerPhone && (
+                <a href={waLink(done.customerPhone, billText(done, shop))} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#22c55e] px-4 text-[13px] font-semibold text-white hover:bg-[#16a34a]">
+                  <WaIcon size={16} /> WhatsApp
+                </a>
+              )}
+              <Btn icon="print" onClick={() => print(<Receipt b={done} shop={shop} />)}>
+                Print receipt
+              </Btn>
+              <Btn kind="red" onClick={() => setDone(null)}>
+                New bill
+              </Btn>
+            </>
+          )
+        }
+      >
+        {done && (
+          <div className="grid place-items-center gap-2 py-2 text-center">
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-emerald-600">
+              <Icon name="check" size={28} stroke={2.6} />
+            </span>
+            <p className="font-bold text-slate-900">{done.invoiceNo}</p>
+            <p className="adm-num text-[32px] font-extrabold">{rupee(done.total)}</p>
+            <p className="text-[13px] text-slate-500">
+              {done.source === "table" ? `${done.tableLabel} is now free for the next guests.` : "Counter sale recorded."}
+              {done.change > 0 && ` Give back ${rupee(done.change)} change.`}
+            </p>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
