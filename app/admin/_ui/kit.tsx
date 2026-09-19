@@ -1,0 +1,490 @@
+"use client";
+
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+
+/* Small admin UI kit — Tailwind classes, one place. */
+
+export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
+
+/* ---------------- icons (24px stroke) ---------------- */
+const P: Record<string, React.ReactNode> = {
+  tables: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  chart: <path d="M3 3v18h18M7 16v-4M12 16V8M17 16v-7" />,
+  orders: (
+    <>
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M12 11h4M12 16h4M8 11h.01M8 16h.01" />
+    </>
+  ),
+  billing: (
+    <>
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+      <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 17.5v-11" />
+    </>
+  ),
+  coupon: <path d="M2 9a3 3 0 1 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 1 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2ZM9 9h.01M15 15h.01M15 9l-6 6" />,
+  box: <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16ZM3.3 7l8.7 5 8.7-5M12 22V12" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7.5" />
+      <path d="m21 21-4.3-4.3" />
+    </>
+  ),
+  plus: <path d="M12 5v14M5 12h14" />,
+  minus: <path d="M5 12h14" />,
+  x: <path d="M18 6 6 18M6 6l12 12" />,
+  edit: <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5ZM15 5l4 4" />,
+  trash: <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />,
+  qr: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" />
+    </>
+  ),
+  download: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />,
+  print: (
+    <>
+      <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" rx="1" />
+    </>
+  ),
+  external: <path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />,
+  refresh: <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8M21 3v5h-5" />,
+  logout: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
+  rupee: <path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3M9 13c6.67 0 6.67-10 0-10" />,
+  users: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+      <circle cx="9" cy="7" r="4" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9.5" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  bell: <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />,
+  belloff: <path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7M10.3 21a1.94 1.94 0 0 0 3.4 0M2 2l20 20" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </>
+  ),
+  check: <path d="M20 6 9 17l-5-5" />,
+  cart: (
+    <>
+      <circle cx="8" cy="21" r="1" />
+      <circle cx="19" cy="21" r="1" />
+      <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+    </>
+  ),
+  menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+  list: <path d="M4 6h16M4 12h11M4 18h7" />,
+  sliders: <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />,
+  percent: (
+    <>
+      <path d="M19 5 5 19" />
+      <circle cx="6.5" cy="6.5" r="2.5" />
+      <circle cx="17.5" cy="17.5" r="2.5" />
+    </>
+  ),
+  bag: <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4ZM3 6h18M16 10a4 4 0 0 1-8 0" />,
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z" />
+    </>
+  ),
+  zap: <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />,
+  star: <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01Z" />,
+  calendar: (
+    <>
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M16 2v4M8 2v4M3 10h18" />
+    </>
+  ),
+  chevron: <path d="m9 18 6-6-6-6" />,
+  utensils: <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />,
+  alert: <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3ZM12 9v4M12 17h.01" />,
+  trophy: (
+    <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+  ),
+  key: <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4" />,
+  eye: (
+    <>
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+};
+
+export type IconName = keyof typeof P;
+
+export function Icon({ name, size = 18, className, stroke = 2 }: { name: IconName; size?: number; className?: string; stroke?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={stroke}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={cx("shrink-0", className)}
+    >
+      {P[name]}
+    </svg>
+  );
+}
+
+export const WaIcon = ({ size = 18 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.5-.3z" />
+  </svg>
+);
+
+/* ---------------- layout ---------------- */
+export function Page({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-[28px] bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.1)] sm:p-8 adm-in">{children}</div>;
+}
+
+export function PageHead({ title, sub, right, bar }: { title: string; sub?: React.ReactNode; right?: React.ReactNode; bar?: boolean }) {
+  return (
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className={cx(bar && "border-l-[5px] border-red-600 pl-3")}>
+        <h1 className="adm-num text-[28px] font-extrabold leading-tight tracking-tight text-slate-900 sm:text-[32px]">{title}</h1>
+        {sub && <p className="mt-1 text-[14px] text-slate-500">{sub}</p>}
+      </div>
+      {right && <div className="flex flex-wrap items-center gap-2">{right}</div>}
+    </div>
+  );
+}
+
+export function Card({ children, className, title, right }: { children: React.ReactNode; className?: string; title?: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <section className={cx("rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)] sm:p-6", className)}>
+      {(title || right) && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          {title && <h2 className="text-[15px] font-bold text-slate-800">{title}</h2>}
+          {right}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+const TONES = {
+  emerald: "bg-emerald-50 text-emerald-600",
+  amber: "bg-amber-50 text-amber-600",
+  sky: "bg-sky-50 text-sky-600",
+  violet: "bg-violet-50 text-violet-600",
+  rose: "bg-rose-50 text-rose-600",
+  orange: "bg-orange-50 text-orange-500",
+  slate: "bg-slate-100 text-slate-600",
+  red: "bg-red-50 text-red-600",
+} as const;
+export type Tone = keyof typeof TONES;
+
+export function Kpi({ label, value, hint, icon, tone = "emerald", small }: { label: string; value: React.ReactNode; hint?: string; icon: IconName; tone?: Tone; small?: boolean }) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)]">
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">{label}</span>
+        <span className={cx("grid h-7 w-7 shrink-0 place-items-center rounded-full", TONES[tone])}>
+          <Icon name={icon} size={14} stroke={2.4} />
+        </span>
+      </div>
+      <div className={cx("adm-num mt-3 truncate font-extrabold text-slate-900", small ? "text-[22px]" : "text-[26px]")} title={typeof value === "string" ? value : undefined}>
+        {value}
+      </div>
+      {hint && <p className="mt-2 truncate text-[11px] text-slate-400">{hint}</p>}
+    </div>
+  );
+}
+
+/* ---------------- controls ---------------- */
+const BTN = {
+  red: "bg-red-600 text-white hover:bg-red-700 shadow-[0_6px_16px_-8px_rgba(220,38,38,.8)]",
+  dark: "bg-slate-900 text-white hover:bg-slate-700",
+  ghost: "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50",
+  soft: "bg-red-50 text-red-600 border border-red-100 hover:bg-red-100",
+  green: "bg-[#22c55e] text-white hover:bg-[#16a34a] shadow-[0_8px_18px_-10px_rgba(22,163,74,.9)]",
+  plain: "text-slate-600 hover:bg-slate-100",
+} as const;
+
+export function Btn({
+  kind = "ghost",
+  size = "md",
+  icon,
+  children,
+  className,
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { kind?: keyof typeof BTN; size?: "sm" | "md" | "lg"; icon?: IconName }) {
+  return (
+    <button
+      type="button"
+      {...rest}
+      className={cx(
+        "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition active:scale-[.97] disabled:pointer-events-none disabled:opacity-45",
+        size === "sm" && "h-8 px-3 text-[12px]",
+        size === "md" && "h-10 px-4 text-[13px]",
+        size === "lg" && "h-12 px-5 text-[14px]",
+        BTN[kind],
+        className,
+      )}
+    >
+      {icon && <Icon name={icon} size={size === "sm" ? 14 : 16} stroke={2.2} />}
+      {children}
+    </button>
+  );
+}
+
+const BADGE = {
+  green: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  red: "bg-red-50 text-red-600 border-red-200",
+  amber: "bg-amber-50 text-amber-700 border-amber-200",
+  orange: "bg-orange-50 text-orange-600 border-orange-200",
+  sky: "bg-sky-50 text-sky-700 border-sky-200",
+  slate: "bg-slate-50 text-slate-500 border-slate-200",
+  violet: "bg-violet-50 text-violet-700 border-violet-200",
+} as const;
+export type BadgeTone = keyof typeof BADGE;
+
+export function Badge({ tone = "slate", children, className }: { tone?: BadgeTone; children: React.ReactNode; className?: string }) {
+  return (
+    <span className={cx("inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2 py-[3px] text-[10.5px] font-bold uppercase tracking-wide", BADGE[tone], className)}>{children}</span>
+  );
+}
+
+export const labelCls = "mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600";
+export const inputCls =
+  "h-12 w-full rounded-xl border border-transparent bg-slate-50 px-4 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-300 focus:bg-white focus:ring-4 focus:ring-red-50";
+export const inputLineCls =
+  "h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
+
+export function Field({ label, children, className, hint }: { label: string; children: React.ReactNode; className?: string; hint?: React.ReactNode }) {
+  return (
+    <label className={cx("block", className)}>
+      <span className={labelCls}>{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-[11px] text-slate-400">{hint}</span>}
+    </label>
+  );
+}
+
+export function SearchBox({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string }) {
+  return (
+    <label
+      className={cx(
+        "flex h-11 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-4 text-slate-400 shadow-sm transition focus-within:border-red-300 focus-within:ring-4 focus-within:ring-red-50",
+        className,
+      )}
+    >
+      <Icon name="search" size={16} />
+      <input
+        className="min-w-0 flex-1 bg-transparent text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+      {value && (
+        <button type="button" onClick={() => onChange("")} className="text-slate-400 hover:text-slate-700" aria-label="Clear search">
+          <Icon name="x" size={14} />
+        </button>
+      )}
+    </label>
+  );
+}
+
+/** Pill group: PERIOD: [ALL TIME] TODAY … */
+export function Pills<T extends string>({ label, value, options, onChange, className }: { label?: string; value: T; options: { v: T; t: string }[]; onChange: (v: T) => void; className?: string }) {
+  return (
+    <div className={cx("flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-200 bg-white p-1 shadow-[0_2px_8px_-2px_rgba(15,23,42,.08)] adm-scroll", className)}>
+      {label && <span className="shrink-0 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</span>}
+      {options.map((o) => (
+        <button
+          key={o.v}
+          type="button"
+          onClick={() => onChange(o.v)}
+          className={cx(
+            "h-8 shrink-0 whitespace-nowrap rounded-full px-4 text-[12px] font-bold uppercase transition",
+            value === o.v ? "bg-red-600 text-white shadow-[0_4px_10px_-4px_rgba(220,38,38,.9)]" : "text-slate-700 hover:bg-slate-100",
+          )}
+        >
+          {o.t}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Underlined tabs: REVENUE  TODAY'S SALES … */
+export function Tabs<T extends string>({ value, options, onChange }: { value: T; options: { v: T; t: string; n?: number }[]; onChange: (v: T) => void }) {
+  return (
+    <div className="mb-7 flex gap-7 overflow-x-auto border-b border-slate-200 adm-scroll">
+      {options.map((o) => (
+        <button
+          key={o.v}
+          type="button"
+          onClick={() => onChange(o.v)}
+          className={cx(
+            "relative flex shrink-0 items-center gap-2 whitespace-nowrap pb-3 pt-1 text-[13px] font-bold uppercase tracking-[0.06em] transition",
+            value === o.v ? "text-red-600" : "text-slate-600 hover:text-slate-900",
+          )}
+        >
+          {o.t}
+          {!!o.n && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1.5 text-[10px] text-white">{o.n}</span>}
+          {value === o.v && <span className="absolute inset-x-0 -bottom-px h-[2px] rounded bg-red-600" />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      className={cx("relative h-6 w-11 shrink-0 rounded-full transition", on ? "bg-emerald-500" : "bg-slate-300")}
+    >
+      <span className={cx("absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform", on && "translate-x-5")} />
+    </button>
+  );
+}
+
+export function Empty({ icon = "box", title, children }: { icon?: IconName; title: string; children?: React.ReactNode }) {
+  return (
+    <div className="grid place-items-center gap-2 px-4 py-12 text-center">
+      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-400">
+        <Icon name={icon} size={22} />
+      </span>
+      <p className="font-semibold text-slate-700">{title}</p>
+      {children && <div className="max-w-sm text-[13px] text-slate-500">{children}</div>}
+    </div>
+  );
+}
+
+/* ---------------- overlays ---------------- */
+/* Overlays render into #adm-layer (in the shell), outside any animated card —
+   a transformed ancestor would otherwise trap position:fixed. */
+const noSub = () => () => {};
+function Layer({ children }: { children: React.ReactNode }) {
+  const ready = useSyncExternalStore(
+    noSub,
+    () => true,
+    () => false,
+  );
+  if (!ready) return null;
+  const host = document.getElementById("adm-layer");
+  return host ? createPortal(children, host) : <>{children}</>;
+}
+
+function useEsc(open: boolean, onClose: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    const html = document.documentElement;
+    const prev = html.style.overflow;
+    html.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", k);
+      html.style.overflow = prev;
+    };
+  }, [open, onClose]);
+}
+
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  wide,
+  footer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: React.ReactNode;
+  children: React.ReactNode;
+  wide?: boolean;
+  footer?: React.ReactNode;
+}) {
+  useEsc(open, onClose);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) box.current?.querySelector<HTMLElement>("input,textarea,select")?.focus();
+  }, [open]);
+  if (!open) return null;
+  return (
+    <Layer>
+      <div className="fixed inset-0 z-[80] grid place-items-center p-3 sm:p-6" role="dialog" aria-modal="true">
+        <button type="button" className="adm-scrim absolute inset-0 bg-slate-900/40" onClick={onClose} aria-label="Close" tabIndex={-1} />
+        <div ref={box} className={cx("adm-in relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl", wide ? "max-w-3xl" : "max-w-lg")}>
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+            <h2 className="text-[17px] font-bold text-slate-900">{title}</h2>
+            <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100" aria-label="Close">
+              <Icon name="x" />
+            </button>
+          </div>
+          <div className="adm-scroll overflow-y-auto px-6 py-5">{children}</div>
+          {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-4">{footer}</div>}
+        </div>
+      </div>
+    </Layer>
+  );
+}
+
+export function Drawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+  useEsc(open, onClose);
+  if (!open) return null;
+  return (
+    <Layer>
+      <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true">
+        <button type="button" className="adm-scrim absolute inset-0 bg-slate-900/30" onClick={onClose} aria-label="Close" tabIndex={-1} />
+        <aside className="adm-drawer adm-scroll absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col overflow-y-auto bg-white shadow-2xl">{children}</aside>
+      </div>
+    </Layer>
+  );
+}
+
+/* ---------------- misc ---------------- */
+export const fmtDate = (t: number) => new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "numeric", year: "numeric" });
+export const fmtTime = (t: number) => new Date(t).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+export const fmtDateTime = (t: number) => `${fmtDate(t)}, ${fmtTime(t)}`;
+export function ago(t: number, now = Date.now()) {
+  const m = Math.max(0, Math.round((now - t) / 60000));
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+export function downloadText(name: string, text: string, type = "text/csv;charset=utf-8") {
+  const url = URL.createObjectURL(new Blob(["﻿" + text], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export const csv = (rows: (string | number)[][]) => rows.map((r) => r.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(",")).join("\n");
