@@ -1,33 +1,41 @@
-import type { Metadata } from "next";
-import { Playfair_Display, Jost } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Fraunces, Instrument_Sans, Caveat } from "next/font/google";
 import "./globals.css";
 
-const playfair = Playfair_Display({
-  variable: "--font-playfair",
+const fraunces = Fraunces({
+  variable: "--font-display",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
   style: ["normal", "italic"],
+  axes: ["SOFT", "WONK", "opsz"],
 });
 
-const jost = Jost({
-  variable: "--font-jost",
+const instrument = Instrument_Sans({
+  variable: "--font-body",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+});
+
+const caveat = Caveat({
+  variable: "--font-hand",
+  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "JM Cakes",
+  title: "Chef Loving Cakes | Kodaikanal",
   description:
-    "JM Cakes — a family-owned bakery in Hobart crafting beautiful, handmade cakes for every occasion.",
+    "Chef Loving Cakes — a family-run bakery in Kodaikanal crafting handmade cakes for every celebration since 2015. Design your cake and order on WhatsApp.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1c110c",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${playfair.variable} ${jost.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${instrument.variable} ${caveat.variable} antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }
