@@ -1,0 +1,339 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import type { Product } from "@/lib/types";
+import { rupee } from "@/lib/money";
+import { useAdmin } from "./Store";
+import { Badge, Btn, Empty, Field, Icon, Kpi, Modal, Page, PageHead, SearchBox, Switch, cx, inputCls } from "./kit";
+
+type Form = {
+  id?: string;
+  name: string;
+  category: string;
+  price: string;
+  track: boolean;
+  stock: string;
+  lowAt: string;
+  description: string;
+  image: string;
+  eggless: boolean;
+  tags: string[];
+  active: boolean;
+};
+
+const EMPTY: Form = { name: "", category: "", price: "", track: true, stock: "10", lowAt: "4", description: "", image: "", eggless: true, tags: [], active: true };
+const TAGS = [
+  ["bestseller", "★ Bestseller"],
+  ["new", "New"],
+] as const;
+const thumb = (src: string) => (src.includes("images.unsplash.com") ? src.replace(/([?&])w=\d+/, "$1w=120") : src);
+
+const th = "px-4 py-3.5 text-left text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-500 whitespace-nowrap";
+const td = "px-4 py-3 text-[13px]";
+
+type StockFilter = "all" | "menu" | "hidden" | "low" | "out";
+
+function StockCell({ p }: { p: Product }) {
+  const { act } = useAdmin();
+  const [edit, setEdit] = useState<string | null>(null);
+  if (p.stock === null)
+    return (
+      <span className="inline-flex items-center gap-2 text-slate-400">
+        ∞ <span className="text-[11px]">untracked</span>
+      </span>
+    );
+  const tone = p.stock <= 0 ? "text-red-600" : p.stock <= p.lowAt ? "text-amber-600" : "text-slate-900";
+  const commit = () => {
+    if (edit !== null && edit.trim() !== "" && Number(edit) !== p.stock) act("product.stock", { id: p.id, set: Number(edit) });
+    setEdit(null);
+  };
+  return (
+    <span className="inline-flex items-center gap-1">
+      <button type="button" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40" onClick={() => act("product.stock", { id: p.id, delta: -1 })} disabled={p.stock <= 0} aria-label={`One less ${p.name}`}>
+        <Icon name="minus" size={13} />
+      </button>
+      {edit !== null ? (
+        <input
+          autoFocus
+          className="h-7 w-14 rounded-lg border border-red-300 text-center text-[13px] font-bold outline-none"
+          value={edit}
+          inputMode="numeric"
+          onChange={(e) => setEdit(e.target.value.replace(/\D/g, ""))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEdit(null);
+          }}
+        />
+      ) : (
+        <button type="button" title="Click to set exact stock" className={cx("h-7 min-w-14 rounded-lg px-2 text-center text-[14px] font-extrabold hover:bg-slate-100", tone)} onClick={() => setEdit(String(p.stock))}>
+          {p.stock}
+        </button>
+      )}
+      <button type="button" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => act("product.stock", { id: p.id, delta: 1 })} aria-label={`One more ${p.name}`}>
+        <Icon name="plus" size={13} />
+      </button>
+    </span>
+  );
+}
+
+export default function InventoryPage() {
+  const { s, act, confirm, toast } = useAdmin();
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("All");
+  const [filter, setFilter] = useState<StockFilter>("all");
+  const [form, setForm] = useState<Form | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const cats = useMemo(() => Array.from(new Set(s.products.map((p) => p.category))), [s.products]);
+  const low = s.products.filter((p) => p.stock !== null && p.stock > 0 && p.stock <= p.lowAt);
+  const out = s.products.filter((p) => p.stock !== null && p.stock <= 0);
+  const value = s.products.reduce((a, p) => a + (p.stock && p.stock > 0 ? p.stock * p.price : 0), 0);
+
+  const list = s.products.filter((p) => {
+    if (cat !== "All" && p.category !== cat) return false;
+    if (q && !`${p.name} ${p.category} ${p.description}`.toLowerCase().includes(q.toLowerCase())) return false;
+    if (filter === "menu") return p.active;
+    if (filter === "hidden") return !p.active;
+    if (filter === "low") return p.stock !== null && p.stock > 0 && p.stock <= p.lowAt;
+    if (filter === "out") return p.stock !== null && p.stock <= 0;
+    return true;
+  });
+
+  const open = (p?: Product) =>
+    setForm(
+      p
+        ? {
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            price: String(p.price),
+            track: p.stock !== null,
+            stock: p.stock === null ? "10" : String(p.stock),
+            lowAt: String(p.lowAt),
+            description: p.description,
+            image: p.image,
+            eggless: p.eggless,
+            tags: p.tags,
+            active: p.active,
+          }
+        : { ...EMPTY, category: cat !== "All" ? cat : cats[0] ?? "" },
+    );
+
+  const save = async () => {
+    if (!form) return;
+    setBusy(true);
+    const r = await act<Product>("product.save", { ...form, stock: form.track ? form.stock : null });
+    setBusy(false);
+    if (r.ok) {
+      toast({ kind: "ok", title: form.id ? `${r.result.name} saved` : `${r.result.name} added${r.result.active ? " to the menu" : ""}` });
+      setForm(null);
+    }
+  };
+
+  return (
+    <Page>
+      <PageHead
+        title="Inventory"
+        sub="Only products that are on the menu show up for guests at the tables."
+        right={
+          <Btn kind="red" icon="plus" onClick={() => open()}>
+            Add product
+          </Btn>
+        }
+      />
+
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <Kpi label="On the menu" value={`${s.products.filter((p) => p.active).length} / ${s.products.length}`} hint="Visible to guests" icon="box" tone="emerald" />
+        <Kpi label="Low stock" value={low.length} hint="At or below alert level" icon="alert" tone={low.length ? "amber" : "slate"} />
+        <Kpi label="Sold out" value={out.length} hint="Shown as sold out" icon="x" tone={out.length ? "red" : "slate"} />
+        <Kpi label="Stock value" value={rupee(value)} hint="Tracked stock at menu price" icon="rupee" tone="sky" />
+      </div>
+
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="adm-scroll flex gap-2 overflow-x-auto pb-1">
+          {["All", ...cats].map((c) => (
+            <button key={c} type="button" onClick={() => setCat(c)} className={cx("h-9 shrink-0 rounded-full px-4 text-[12.5px] font-semibold transition", cat === c ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>
+              {c}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="h-11 rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 outline-none" value={filter} onChange={(e) => setFilter(e.target.value as StockFilter)} aria-label="Filter">
+            <option value="all">All products</option>
+            <option value="menu">On the menu</option>
+            <option value="hidden">Hidden</option>
+            <option value="low">Low stock</option>
+            <option value="out">Sold out</option>
+          </select>
+          <SearchBox value={q} onChange={setQ} placeholder="Search products…" className="w-full sm:w-64" />
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)]">
+        <div className="adm-scroll overflow-x-auto">
+          <table className="w-full min-w-[860px]">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className={th}>Product</th>
+                <th className={th}>Category</th>
+                <th className={th}>Price</th>
+                <th className={th}>Stock</th>
+                <th className={th}>On menu</th>
+                <th className={cx(th, "text-right")}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((p) => (
+                <tr key={p.id} className={cx("border-b border-slate-100 last:border-0 hover:bg-slate-50/50", !p.active && "opacity-60")}>
+                  <td className={td}>
+                    <div className="flex items-center gap-3">
+                      {p.image ? <img src={thumb(p.image)} alt="" className="h-11 w-11 rounded-xl object-cover" loading="lazy" /> : <span className="grid h-11 w-11 place-items-center rounded-xl bg-slate-100 font-bold text-slate-400">{p.name[0]}</span>}
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 font-semibold text-slate-900">
+                          <span className={cx("grid h-3.5 w-3.5 place-items-center rounded-[3px] border-[1.5px]", p.eggless ? "border-green-700" : "border-amber-700")} title={p.eggless ? "Eggless" : "Contains egg"}>
+                            <span className={cx("h-1.5 w-1.5 rounded-full", p.eggless ? "bg-green-700" : "bg-amber-700")} />
+                          </span>
+                          {p.name}
+                        </p>
+                        <p className="mt-0.5 flex flex-wrap gap-1">
+                          {p.tags.map((t) => (
+                            <Badge key={t} tone={t === "bestseller" ? "amber" : "violet"}>
+                              {t}
+                            </Badge>
+                          ))}
+                          {p.stock !== null && p.stock <= 0 ? <Badge tone="red">Sold out</Badge> : p.stock !== null && p.stock <= p.lowAt ? <Badge tone="amber">Low</Badge> : null}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className={cx(td, "text-slate-600")}>{p.category}</td>
+                  <td className={cx(td, "font-bold text-slate-900")}>{rupee(p.price)}</td>
+                  <td className={td}>
+                    <StockCell p={p} />
+                  </td>
+                  <td className={td}>
+                    <Switch on={p.active} onChange={() => act("product.toggle", { id: p.id })} label={`${p.name} on the menu`} />
+                  </td>
+                  <td className={cx(td, "text-right")}>
+                    <span className="inline-flex gap-1">
+                      <Btn size="sm" kind="plain" icon="edit" onClick={() => open(p)}>
+                        Edit
+                      </Btn>
+                      <Btn
+                        size="sm"
+                        kind="plain"
+                        className="text-red-600 hover:bg-red-50"
+                        onClick={async () => {
+                          if (await confirm({ title: `Delete ${p.name}?`, body: "It disappears from the menu and catalog. Past orders and bills keep their copy. To hide it for a while, switch “On menu” off instead.", ok: "Delete", danger: true }))
+                            act("product.delete", { id: p.id });
+                        }}
+                        aria-label={`Delete ${p.name}`}
+                      >
+                        <Icon name="trash" size={14} />
+                      </Btn>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!list.length && (
+            <Empty icon="box" title={s.products.length ? "No products match" : "Your inventory is empty"}>
+              {s.products.length ? "Try another filter." : "Add products — they appear on the table menu straight away."}
+            </Empty>
+          )}
+        </div>
+      </div>
+
+      <Modal
+        open={!!form}
+        onClose={() => setForm(null)}
+        title={form?.id ? "Edit product" : "Add product"}
+        wide
+        footer={
+          <>
+            <Btn onClick={() => setForm(null)}>Cancel</Btn>
+            <Btn kind="red" disabled={busy || !form?.name.trim() || form?.price === ""} onClick={save}>
+              {form?.id ? "Save product" : "Add product"}
+            </Btn>
+          </>
+        }
+      >
+        {form && (
+          <div className="grid gap-5 md:grid-cols-[1fr_220px]">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Name *" className="sm:col-span-2">
+                <input className={inputCls} value={form.name} maxLength={80} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Black Forest Slice" />
+              </Field>
+              <Field label="Category *">
+                <input className={inputCls} list="adm-cats" value={form.category} maxLength={40} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Cake Slices" />
+                <datalist id="adm-cats">
+                  {cats.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </Field>
+              <Field label="Price (₹) *">
+                <input className={inputCls} type="number" min={0} step="0.5" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="140" />
+              </Field>
+              <div className="rounded-2xl border border-slate-100 p-4 sm:col-span-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span>
+                    <b className="block text-[13px] text-slate-800">Track stock</b>
+                    <span className="text-[12px] text-slate-500">Off for made-to-order items like coffee — they never sell out.</span>
+                  </span>
+                  <Switch on={form.track} onChange={(v) => setForm({ ...form, track: v })} label="Track stock" />
+                </div>
+                {form.track && (
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <Field label="In stock now">
+                      <input className={inputCls} type="number" min={0} value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
+                    </Field>
+                    <Field label="Low-stock alert at">
+                      <input className={inputCls} type="number" min={0} value={form.lowAt} onChange={(e) => setForm({ ...form, lowAt: e.target.value })} />
+                    </Field>
+                  </div>
+                )}
+              </div>
+              <Field label="Description" className="sm:col-span-2">
+                <textarea className={cx(inputCls, "h-20 resize-none py-3")} maxLength={240} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="One line that makes it irresistible." />
+              </Field>
+              <Field label="Image URL" className="sm:col-span-2" hint="Paste a link to a photo (square works best).">
+                <input className={inputCls} value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://…" />
+              </Field>
+            </div>
+            <div className="space-y-4">
+              <div className="aspect-square overflow-hidden rounded-2xl bg-slate-100">
+                {form.image ? <img src={form.image} alt="" className="h-full w-full object-cover" /> : <span className="grid h-full place-items-center text-[12px] text-slate-400">No image</span>}
+              </div>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-[13px] font-semibold text-slate-700">
+                Eggless
+                <Switch on={form.eggless} onChange={(v) => setForm({ ...form, eggless: v })} label="Eggless" />
+              </label>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-[13px] font-semibold text-slate-700">
+                Show on menu
+                <Switch on={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Show on menu" />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {TAGS.map(([t, label]) => {
+                  const on = form.tags.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setForm({ ...form, tags: on ? form.tags.filter((x) => x !== t) : [...form.tags, t] })}
+                      className={cx("h-8 rounded-full px-3 text-[12px] font-bold transition", on ? "bg-amber-400 text-amber-950" : "bg-slate-100 text-slate-500")}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </Page>
+  );
+}

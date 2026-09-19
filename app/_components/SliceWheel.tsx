@@ -82,7 +82,6 @@ export default function SliceWheel() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const t = window.setInterval(() => choose((activeRef.current + 1) % SLICES.length), 3800);
     return () => window.clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, inView]);
 
   const pick = (i: number) => {
@@ -95,12 +94,18 @@ export default function SliceWheel() {
   return (
     <div className="wheel" ref={wrapRef}>
       <div className="wheel__art" data-reveal="scale">
+        <div className="wheel__disc">
+        {/* static plate + shadow */}
         <svg viewBox="-30 -30 420 420" className="wheel__svg" aria-hidden="true">
           <circle cx={C} cy={C + 10} r={R + 26} fill="#000" opacity=".18" />
           <circle cx={C} cy={C} r={R + 26} fill="#fbf5ea" />
           <circle cx={C} cy={C} r={R + 16} fill="none" stroke="#26170f" strokeOpacity=".08" strokeWidth="2" />
           <circle cx={C} cy={C} r={R + 21} fill="none" stroke="#26170f" strokeOpacity=".08" strokeDasharray="1 6" />
-          <g className="wheel__rot" style={{ transform: `rotate(${rot}deg)` }}>
+        </svg>
+        {/* the cake turns on an HTML layer so the GPU does the rotation */}
+        <div className="wheel__spin" style={{ transform: `rotate(${rot}deg)` }}>
+        <svg viewBox="-30 -30 420 420" className="wheel__svg" aria-hidden="true">
+          <g>
             {SLICES.map((sl, i) => {
               const mid = i * 90;
               const on = active === i;
@@ -164,6 +169,8 @@ export default function SliceWheel() {
             </radialGradient>
           </defs>
         </svg>
+        </div>
+        </div>
         <span className="wheel__hint">tap a slice</span>
       </div>
 

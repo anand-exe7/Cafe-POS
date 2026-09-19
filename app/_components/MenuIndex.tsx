@@ -104,7 +104,7 @@ export default function MenuIndex() {
                 ))}
               </span>
               <span className="mi__note">{m.note}</span>
-              <img className="mi__thumb" src={m.img.replace("w=520", "w=200")} alt="" loading="lazy" />
+              <img className="mi__thumb" src={m.img.replace("w=520", "w=200")} alt="" loading="lazy" decoding="async" />
               <span className="mi__go">
                 <Arrow size={22} />
               </span>
@@ -116,7 +116,7 @@ export default function MenuIndex() {
       <div className={`mfloat ${active !== null ? "is-on" : ""}`} ref={floatRef} aria-hidden="true">
         <div className="mfloat__card">
           {MENU.map((m, i) => (
-            <img key={m.title} src={m.img} alt="" className={active === i ? "is-on" : ""} loading="lazy" />
+            <img key={m.title} src={m.img} alt="" className={active === i ? "is-on" : ""} loading="lazy" decoding="async" />
           ))}
           <span className="mfloat__tag">{active !== null ? MENU[active].title : ""}</span>
         </div>
