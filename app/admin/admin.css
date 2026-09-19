@@ -1,0 +1,221 @@
+/* ==========================================================================
+   ADMIN — clean POS look (white cards, red accent). Layout is Tailwind;
+   this file holds fonts, a few primitives and print sheets.
+   ========================================================================== */
+
+html:has(.adm) {
+  background: #f5f6f8;
+  scroll-behavior: auto;
+}
+.adm {
+  min-height: 100vh;
+  background: #f5f6f8;
+  color: #0f172a;
+  font-family: var(--font-adm), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.adm ::selection {
+  background: #dc2626;
+  color: #fff;
+}
+.adm :focus-visible {
+  outline: 2px solid #dc2626;
+  outline-offset: 2px;
+}
+.adm-num {
+  font-family: var(--font-adm-num), var(--font-adm), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.adm input[type="number"]::-webkit-inner-spin-button,
+.adm input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.adm input[type="number"] {
+  -moz-appearance: textfield;
+}
+.adm select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+/* bars grow from the baseline once, then just resize */
+.adm-bar {
+  transform-origin: bottom;
+  animation: adm-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+.adm-fill {
+  transform-origin: left;
+  animation: adm-grow-x 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes adm-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes adm-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+.adm-in {
+  animation: adm-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes adm-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.adm-pulse {
+  position: relative;
+}
+.adm-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 2px solid currentColor;
+  animation: adm-ping 1.6s ease-out infinite;
+}
+@keyframes adm-ping {
+  from {
+    opacity: 0.7;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+.adm-drawer {
+  animation: adm-drawer 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes adm-drawer {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+.adm-scrim {
+  animation: adm-fade 0.25s both;
+}
+@keyframes adm-fade {
+  from {
+    opacity: 0;
+  }
+}
+.adm-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.adm-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #e2e8f0 transparent;
+}
+
+/* ---------- print ---------- */
+.adm-print {
+  display: none;
+}
+@media print {
+  @page {
+    margin: 10mm;
+  }
+  html:has(.adm),
+  .adm {
+    background: #fff !important;
+  }
+  .adm-app {
+    display: none !important;
+  }
+  .adm-print {
+    display: block;
+    color: #000;
+  }
+}
+
+/* QR table cards: two per row on A4 */
+.qr-sheet {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8mm;
+}
+.qr-card {
+  break-inside: avoid;
+  display: grid;
+  justify-items: center;
+  gap: 3mm;
+  padding: 8mm 6mm;
+  border: 1.5px dashed #999;
+  border-radius: 6mm;
+  text-align: center;
+  font-family: var(--font-display), Georgia, serif;
+}
+.qr-card__brand {
+  font-style: italic;
+  font-size: 16pt;
+}
+.qr-card__table {
+  font-size: 40pt;
+  line-height: 1;
+}
+.qr-card__table small {
+  display: block;
+  font: 600 8pt/1.4 var(--font-adm), sans-serif;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+.qr-card__qr {
+  width: 52mm;
+}
+.qr-card__qr svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.qr-card__cta {
+  font: 600 11pt/1.3 var(--font-adm), sans-serif;
+}
+.qr-card__url {
+  font: 400 7pt/1.2 var(--font-adm), sans-serif;
+  color: #555;
+  word-break: break-all;
+}
+
+/* 80mm thermal receipt */
+.rcpt {
+  width: 72mm;
+  margin: 0 auto;
+  font: 400 10pt/1.35 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: #000;
+}
+.rcpt h1 {
+  margin: 0;
+  font: 700 13pt/1.2 var(--font-adm), sans-serif;
+  text-align: center;
+}
+.rcpt .c {
+  text-align: center;
+}
+.rcpt hr {
+  border: 0;
+  border-top: 1px dashed #000;
+  margin: 2mm 0;
+}
+.rcpt .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 3mm;
+}
+.rcpt .big {
+  font-weight: 700;
+  font-size: 12pt;
+}
