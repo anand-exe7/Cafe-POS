@@ -181,15 +181,13 @@ export default function CakeLab() {
 
   /* ---------- geometry ---------- */
   const tiers = useMemo(() => {
-    let y = PY;
-    return TIER_DIMS[cfg.tiers].map((d, k) => {
-      const rx = d.w / 2;
-      const ry = rx * 0.2;
-      const yBot = y;
-      const yTop = y - d.h;
-      y = yTop;
-      return { ...d, rx, ry, yBot, yTop, k };
-    });
+    const dims = TIER_DIMS[cfg.tiers];
+    const out: { w: number; h: number; rx: number; ry: number; yBot: number; yTop: number; k: number }[] = [];
+    for (let k = 0, y = PY; k < dims.length; y -= dims[k].h, k++) {
+      const rx = dims[k].w / 2;
+      out.push({ ...dims[k], rx, ry: rx * 0.2, yBot: y, yTop: y - dims[k].h, k });
+    }
+    return out;
   }, [cfg.tiers]);
   const topT = tiers[tiers.length - 1];
 

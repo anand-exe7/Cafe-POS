@@ -38,9 +38,8 @@ const DEPTH: Record<Kind, number> = { choc: 52, berry: 42, mint: 36, cream: 24, 
 
 /* floating sprinkles across the stage, in the site palette */
 const SPRINKLES: [number, number][] = [
-  [12, 24], [22, 56], [17, 80], [34, 14], [41, 40], [28, 90],
-  [55, 8], [60, 34], [46, 70], [67, 88], [72, 18], [80, 50],
-  [88, 30], [84, 74], [92, 58], [8, 44], [38, 76], [63, 62],
+  [12, 24], [22, 56], [34, 14], [41, 40], [28, 90], [55, 8],
+  [67, 88], [72, 18], [80, 50], [88, 30], [92, 58], [63, 62],
 ];
 const SPRINKLE_COLORS = ["#d7263d", "#f5ecdc", "#b3c68b", "#e2a75c", "#f2b8b5", "#8a5a3c"];
 
@@ -109,7 +108,7 @@ export default function HeroStage() {
         return (
           <div
             key={p.file}
-            className={`pc ${back ? "pc--back" : p.cy < 0.38 ? "pc--under" : "pc--front"} is-${type} drift-${dy < 0 ? "n" : "s"}${dx < 0 ? "w" : "e"}${AMP[type] > 20 ? "" : "-sm"}`}
+            className={`pc ${back ? "pc--back" : p.cy < 0.38 ? "pc--under" : "pc--front"} is-${type} ${p.cx < 0.27 || p.cx > 0.73 ? "is-edge" : ""} ${p.area < 9000 && type !== "swirl" ? "is-still" : ""} drift-${dy < 0 ? "n" : "s"}${dx < 0 ? "w" : "e"}${AMP[type] > 20 ? "" : "-sm"}`}
             style={style}
           >
             <div className="pc__scroll">
@@ -142,7 +141,7 @@ export default function HeroStage() {
         const star = i % 4 === 3;
         const size = star ? 7 : 5 + (i % 3) * 2;
         return (
-          <div key={`s${i}`} className="spr" style={{ left: `${left}%`, top: `${top}%`, "--depth": 24 + (i % 5) * 10 } as CSSVars}>
+          <div key={`s${i}`} className={left < 27 || left > 73 ? "spr is-edge" : "spr"} style={{ left: `${left}%`, top: `${top}%`, "--depth": 24 + (i % 5) * 10 } as CSSVars}>
             <span
               className={star ? "spr__i is-star" : "spr__i"}
               style={{

@@ -12,7 +12,8 @@ import { useEffect } from "react";
  *   [data-magnetic]      → element leans toward the pointer
  *   [data-tilt]          → 3D tilt under the pointer
  *   [data-drag]          → draggable polaroids
- *   [data-nav]           → hide on scroll down, solid once scrolled
+ *   [data-nav]           → solid once scrolled; tucks away on scroll-down only on desktop, past the cover
+ *   [data-fab]           → floating Order button, shown once the landing cover is passed
  *   [data-menu-toggle]   → mobile menu
  *   [data-toprogress]    → back-to-top ring
  * plus a custom cursor and a sprinkle trail / click-confetti canvas.
@@ -142,21 +143,33 @@ export default function FX() {
     /* ---------------- nav + back-to-top ---------------- */
     const nav = document.querySelector<HTMLElement>("[data-nav]");
     const topBtn = document.querySelector<HTMLElement>("[data-toprogress]");
+    const fab = document.querySelector<HTMLElement>("[data-fab]");
     let lastY = window.scrollY;
     let curY = lastY;
     let maxScroll = 1;
+    // The nav only tucks away on large pointer screens, and never on the landing cover.
+    // Phones and tablets keep it on screen the whole time.
+    const canHideNav = window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 1025px)");
+    const cover = document.querySelector<HTMLElement>(".cover");
+    let coverEnd = 0;
+    let vh = window.innerHeight;
     const measure = () => {
-      maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      vh = window.innerHeight;
+      maxScroll = Math.max(1, document.documentElement.scrollHeight - vh);
+      coverEnd = cover ? cover.offsetTop + cover.offsetHeight : 0;
     };
     const updateChrome = () => {
       const y = window.scrollY;
       if (nav) {
         nav.classList.toggle("is-solid", y > 40);
         if (Math.abs(y - lastY) > 6) {
-          nav.classList.toggle("is-hidden", y > lastY && y > 420 && !root.classList.contains("menu-open"));
+          const hide = canHideNav.matches && y > lastY && y > coverEnd && !root.classList.contains("menu-open");
+          nav.classList.toggle("is-hidden", hide);
           lastY = y;
         }
       }
+      // the floating Order button waits until the landing cover has been scrolled past
+      fab?.classList.toggle("is-away", y < coverEnd - vh * 1.25);
       if (topBtn) {
         topBtn.style.setProperty("--p", clamp(y / maxScroll).toFixed(3));
         topBtn.classList.toggle("is-visible", y > 700);
@@ -173,13 +186,12 @@ export default function FX() {
         updateProgress();
         updateChrome();
         curY = window.scrollY;
-        wake();
+        nudgeTickers();
       });
     };
     const onResize = () => {
       layoutH();
       measure();
-      measureMarquees();
       onScroll();
     };
     layoutH();
@@ -366,33 +378,42 @@ export default function FX() {
       wake();
     });
 
-    /* ---------------- marquees ---------------- */
-    const marquees = reduce
+    /* ---------------- tickers ----------------
+       The ribbons scroll with a CSS animation (compositor thread). Scrolling the
+       page speeds them up / reverses them and leans them, then they settle. */
+    const ribbons = document.querySelector<HTMLElement>(".ribbons");
+    const tickers = reduce
       ? []
-      : $$("[data-marquee]").map((el) => ({ el, track: el.firstElementChild as HTMLElement, x: 0, half: 0, dir: Number(el.dataset.marquee) || 1 }));
-    function measureMarquees() {
-      for (const m of marquees) m.half = (m.track?.scrollWidth ?? 0) / 2;
-    }
-    measureMarquees();
-    document.fonts?.ready.then(measureMarquees);
-    let marqueeOn = true;
-    if (marquees.length) {
-      const io = new IntersectionObserver(
-        (es) => {
-          marqueeOn = es.some((e) => e.isIntersecting);
-          wake();
-        },
-        { rootMargin: "100px" },
-      );
-      marquees.forEach((m) => io.observe(m.el));
-      cleanups.push(() => io.disconnect());
-    }
-    let prevY = curY;
-    let vel = 0;
+      : $$("[data-marquee]")
+          .map((el) => el.firstElementChild?.getAnimations()[0])
+          .filter((x): x is Animation => !!x);
+    let tickY = window.scrollY;
+    let tickRate = 1;
+    let tickTimer = 0;
+    const nudgeTickers = () => {
+      if (!tickers.length) return;
+      const dy = curY - tickY;
+      tickY = curY;
+      if (!dy) return;
+      const dir = dy < 0 ? -1 : 1;
+      const rate = Math.min(7, 1 + Math.abs(dy) * 0.1) * dir;
+      if (Math.abs(rate - tickRate) > 0.15) {
+        tickRate = rate;
+        tickers.forEach((t) => t.updatePlaybackRate(rate));
+      }
+      ribbons?.style.setProperty("--skew", `${clamp(-dy * 0.15, -7, 7).toFixed(1)}deg`);
+      window.clearTimeout(tickTimer);
+      tickTimer = window.setTimeout(() => {
+        tickRate = dir;
+        tickers.forEach((t) => t.updatePlaybackRate(dir));
+        ribbons?.style.setProperty("--skew", "0deg");
+      }, 160);
+    };
+    cleanups.push(() => window.clearTimeout(tickTimer));
 
     /* ---------------- main loop ----------------
-       Sleeps whenever there is nothing to move: no visible ticker, cursor ring
-       settled, no sprinkles alive. wake() restarts it. Never reads layout. */
+       Only runs while the cursor ring is catching up or sprinkles are alive;
+       wake() restarts it. Never reads layout. */
     let raf = 0;
     let dirty = false;
     function wake() {
@@ -408,21 +429,8 @@ export default function FX() {
         ring.style.transform = `translate3d(${rx.toFixed(1)}px,${ry.toFixed(1)}px,0)`;
         busy = true;
       }
-      // scroll velocity (curY comes from the scroll handler)
-      vel += (curY - prevY - vel) * 0.12;
-      prevY = curY;
-      if (marqueeOn) {
-        for (const m of marquees) {
-          if (!m.track || !m.half) continue;
-          const speed = (1 + clamp(Math.abs(vel) * 0.3, 0, 14)) * (vel < -0.5 ? -1 : 1);
-          m.x -= speed * m.dir;
-          if (m.x <= -m.half) m.x += m.half;
-          if (m.x > 0) m.x -= m.half;
-          m.track.style.transform = `translate3d(${m.x.toFixed(1)}px,0,0) skewX(${clamp(-vel * 0.25, -8, 8).toFixed(2)}deg)`;
-        }
-        busy = true;
-      }
-      // sprinkles
+      // sprinkles (canvas is hidden entirely when there are none)
+      if (parts.length && !dirty) canvas.classList.add("is-on");
       if (parts.length || dirty) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -449,9 +457,10 @@ export default function FX() {
           ctx.restore();
         }
         dirty = parts.length > 0;
+        if (!dirty) canvas.classList.remove("is-on");
         busy = true;
       }
-      if (busy || Math.abs(vel) > 0.05) raf = requestAnimationFrame(loop);
+      if (busy) raf = requestAnimationFrame(loop);
     };
     wake();
     cleanups.push(() => cancelAnimationFrame(raf));
