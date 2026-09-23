@@ -5,6 +5,7 @@ import MenuIndex from "./MenuIndex";
 import CakeLab from "./CakeLab";
 import SliceWheel from "./SliceWheel";
 import { Split, Letters, Roll, Drip, Barcode, Cherry, Arrow, WhatsApp, Phone, Insta, Mail } from "./bits";
+import type { TableCard } from "@/lib/types";
 
 type CSSVars = React.CSSProperties & Record<`--${string}`, string | number>;
 const U = (id: string, w = 700) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`;
@@ -41,10 +42,12 @@ const STORY =
   "Since 2015, our family has been baking in the hills of Kodaikanal with one simple rule — everything is made by hand, in-store, fresh every single day. A cake is never just dessert here. It's the centrepiece, the talking point, sometimes the surprise itself. So every order gets the same care, whether it's one slice or a three-tier wedding showpiece.";
 
 /** The magazine landing page. With `table` (a guest who scanned a table QR), the
-    order buttons lead to that table's menu instead of WhatsApp. */
-export default function Landing({ table }: { table?: { label: string; code: string } }) {
+    order buttons lead to that table's menu instead of WhatsApp. Without one, `tables`
+    puts the same tables on the page as a picker, for anyone who couldn't scan. */
+export default function Landing({ table, tables }: { table?: { label: string; code: string }; tables?: TableCard[] }) {
   const storyWords = STORY.split(" ");
   const menuHref = table ? `/t/${table.code}/menu` : null;
+  const pick = !table && tables && tables.length ? tables : null;
 
   return (
     <>
@@ -80,6 +83,7 @@ export default function Landing({ table }: { table?: { label: string; code: stri
           </span>
         </a>
         <nav className="nav__links" aria-label="Main">
+          {pick && <a href="#tables"><Roll>Dining in</Roll></a>}
           <a href="#menu"><Roll>Menu</Roll></a>
           <a href="#lab"><Roll>Cake Lab</Roll></a>
           <a href="#story"><Roll>Story</Roll></a>
@@ -110,6 +114,7 @@ export default function Landing({ table }: { table?: { label: string; code: stri
         <nav aria-label="Mobile">
           {[
             ...(menuHref ? [[menuHref, `Order at ${table!.label}`]] : []),
+            ...(pick ? [["#tables", "Pick your table"]] : []),
             ["#menu", "Menu"],
             ["#lab", "Cake Lab"],
             ["#story", "Our story"],
@@ -170,6 +175,12 @@ export default function Landing({ table }: { table?: { label: string; code: stri
             </div>
 
             <div className="coverlines coverlines--l">
+              {pick && (
+                <a href="#tables" className="cl">
+                  <span className="cl__pg">p. 00 — Dining in</span>
+                  <span className="cl__t">Sitting with us? <em>Pick your table</em></span>
+                </a>
+              )}
               {menuHref && (
                 <a href={menuHref} className="cl">
                   <span className="cl__pg">p. 00 — Table {table!.label}</span>
@@ -180,7 +191,7 @@ export default function Landing({ table }: { table?: { label: string; code: stri
                 <span className="cl__pg">p. 01 — The Menu</span>
                 <span className="cl__t">Birthdays, weddings &amp; <em>everything</em> in between</span>
               </a>
-              {!menuHref && (
+              {!menuHref && !pick && (
                 <a href="#lab" className="cl">
                   <span className="cl__pg">p. 02 — Cake Lab</span>
                   <span className="cl__t">Design your dream cake in <em>60 seconds</em></span>
@@ -207,7 +218,7 @@ export default function Landing({ table }: { table?: { label: string; code: stri
         </section>
 
         {/* ===================== CROSSING RIBBONS ===================== */}
-        <div className="ribbons" aria-hidden="true">
+        <div className="ribbons" aria-hidden="true" data-live>
           <div className="ribbon ribbon--a" data-marquee="1">
             <div className="ribbon__track">
               {[...TICKER, ...TICKER, ...TICKER, ...TICKER].map((t, i) => (
@@ -227,6 +238,53 @@ export default function Landing({ table }: { table?: { label: string; code: stri
             </div>
           </div>
         </div>
+
+        {/* ===================== 00 DINING IN — pick a table ===================== */}
+        {pick && (
+          <section className="sec dine" id="tables">
+            <div className="wrap">
+              <header className="head head--split">
+                <div>
+                  <span className="kicker" data-reveal="fade">(00) Dining in</span>
+                  <h2 className="h-xl" data-reveal="split">
+                    <Split text="Sitting" /> <em><Split text="with us?" from={1} /></em>
+                  </h2>
+                </div>
+                <p className="lede" data-reveal="up" style={{ "--i": 2 } as CSSVars}>
+                  Tap your table and the menu opens right here on your phone — order, keep adding to the tab, pay
+                  whenever you&apos;re done. Every table has its own QR card too, if you&apos;d rather scan.
+                </p>
+              </header>
+
+              <div className="tables">
+                {pick.map((t, i) => (
+                  <a
+                    key={t.code}
+                    href={`/t/${t.code}/menu`}
+                    className="tkt"
+                    data-reveal="up"
+                    data-cursor="Sit here"
+                    style={{ "--i": Math.min(i, 6), "--r": `${((i % 3) - 1) * 0.7}deg` } as CSSVars}
+                  >
+                    <span className="tkt__stub">
+                      <small>Table</small>
+                      <b>{t.label}</b>
+                    </span>
+                    <span className="tkt__body">
+                      <span className="tkt__seats">{t.seats} {t.seats === 1 ? "seat" : "seats"}</span>
+                      <span className="tkt__go">Open menu <Arrow size={16} /></span>
+                    </span>
+                  </a>
+                ))}
+              </div>
+
+              <p className="dine__note" data-reveal="fade">
+                psst — your table number is on the little card in the middle of the table ↑
+              </p>
+            </div>
+            <Drip color="#1c110c" seed={5} />
+          </section>
+        )}
 
         {/* ===================== 01 MENU ===================== */}
         <section className="sec menu" id="menu">

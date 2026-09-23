@@ -45,6 +45,18 @@
   initial-value: 0;
 }
 
+/* Scroll progress, 0..1, written by FX. Registering it as NON-inheriting is a
+   performance decision: an ordinary custom property set on a section
+   invalidates the style of every node inside it, and the cover holds ~200 of
+   them, so every scroll frame paid for the lot. FX now writes --p straight onto
+   the elements that read it (see P_SINKS in FX.tsx). Where the readers sit deep
+   inside a section, that section re-exports it as --rp, which does inherit. */
+@property --p {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 html {
   overflow-x: hidden;
   scroll-behavior: smooth;
@@ -442,9 +454,6 @@ a:focus-visible .roll > span {
   background: rgba(28, 17, 12, 0.94);
   box-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(245, 236, 220, 0.07);
 }
-.nav.is-hidden {
-  transform: translateY(-150%);
-}
 @keyframes nav-in {
   from { opacity: 0; translate: -50% -30px; }
   to { opacity: 1; translate: -50% 0; }
@@ -466,6 +475,7 @@ a:focus-visible .roll > span {
   line-height: 1;
 }
 .brand__name em {
+  white-space: nowrap;
   font-family: var(--display);
   font-size: 22px;
   font-style: italic;
@@ -1704,8 +1714,9 @@ a:focus-visible .roll > span {
   line-height: 1.24;
   letter-spacing: -0.02em;
 }
+.story__read { --rp: var(--p); }
 .story__read span {
-  opacity: clamp(0.14, calc(var(--p, 0) * var(--n) * 1.2 - var(--i)), 1);
+  opacity: clamp(0.14, calc(var(--rp, 0) * var(--n) * 1.2 - var(--i)), 1);
 }
 .facts {
   display: grid;
@@ -1949,6 +1960,7 @@ a:focus-visible .roll > span {
    05 Gallery — horizontal ride on desktop
    ========================================================================== */
 .gal {
+  --rp: var(--p);
   --bg: var(--paper);
   position: relative;
   background: var(--bg);
@@ -1991,7 +2003,7 @@ a:focus-visible .roll > span {
   letter-spacing: -0.04em;
   color: transparent;
   -webkit-text-stroke: 1.5px rgba(38, 23, 15, 0.1);
-  translate: calc(var(--p, 0) * -38%) 0;
+  translate: calc(var(--rp, 0) * -38%) 0;
   pointer-events: none;
 }
 .gal__intro {
@@ -2440,6 +2452,7 @@ a:focus-visible .roll > span {
   100% { transform: scale(1.2, 1.5); opacity: 0; }
 }
 .totop {
+  --rp: var(--p);
   position: fixed;
   z-index: 60;
   right: 22px;
@@ -2480,7 +2493,7 @@ a:focus-visible .roll > span {
   stroke: var(--cherry-lite);
   stroke-linecap: round;
   stroke-dasharray: 1;
-  stroke-dashoffset: calc(1 - var(--p, 0));
+  stroke-dashoffset: calc(1 - var(--rp, 0));
 }
 
 .fx-canvas {
@@ -2580,40 +2593,71 @@ a:focus-visible .roll > span {
    The cake is sized from the screen height so tall phones don't end up with a
    half-empty cover, and the blurbs sit along the bottom edge. */
 @media (orientation: portrait) and (max-width: 1100px) {
-  .cover { height: 170vh; }
+  .cover { height: 168vh; }
+  /* The phone cover is budgeted top-down — meta strip, wordmark, cake, deck —
+     so the cake always lands *under* the masthead and above the cover lines,
+     whatever the screen height. --deck is the space the bottom block needs. */
   .cover__pin {
-    --mast-top: 104px;
-    --mast-size: 17.5vw;
-    --stage-w: clamp(205vw, calc((100svh - 340px) / 0.3957), 272vw);
-    --stage-top: calc(var(--mast-top) + var(--mast-size) * 0.32 - 0.1596 * var(--stage-w));
+    --mast-top: clamp(104px, 13.5svh, 132px);
+    --mast-size: clamp(54px, 20vw, 108px);
+    --deck: clamp(170px, 26svh, 240px);
+    --cake-top: calc(var(--mast-top) + var(--mast-size) * 0.98);
+    --cake-h: max(196px, calc(100svh - var(--cake-top) - var(--deck) - 18px));
+    /* fill the gap, but never let the cake run past the screen edges */
+    --stage-w: min(calc(var(--cake-h) / 0.3957), 265vw);
+    --stage-top: calc(var(--cake-top) - 0.1596 * var(--stage-w));
   }
   .cover__meta {
-    top: 80px;
-    padding: 8px 0;
+    top: clamp(74px, 9.4svh, 96px);
+    padding: 7px 0;
     font-size: 9.5px;
     letter-spacing: 0.16em;
     white-space: nowrap;
   }
   .cover__meta-mid { display: none; }
+  .masthead { letter-spacing: -0.035em; }
   .sticker {
-    top: calc(var(--mast-top) + var(--mast-size) + 10px);
+    top: calc(var(--cake-top) + var(--cake-h) * 0.1);
+    right: max(6px, calc(var(--gutter) - 8px));
+    width: clamp(72px, 19vw, 120px);
+  }
+  .sticker__core b { font-size: clamp(15px, 3.8vw, 22px); }
+  .sticker__core small { font-size: clamp(12px, 3.1vw, 18px); }
+
+  /* one full-width column of cover lines, with the scroll cue under it —
+     two half-width columns wrapped to three lines each and ran off the screen */
+  .coverlines--r { display: none; }
+  .coverlines--l {
+    left: var(--gutter);
     right: var(--gutter);
-    width: clamp(78px, 13vw, 120px);
+    width: auto;
+    gap: 13px;
+    bottom: calc(max(14px, env(safe-area-inset-bottom)) + 58px);
   }
-  .sticker__core b { font-size: clamp(15px, 2.6vw, 22px); }
-  .sticker__core small { font-size: clamp(13px, 2.2vw, 18px); }
-  .coverlines {
-    width: calc(50% - var(--gutter) - 8px);
-    gap: 14px;
-    bottom: max(20px, env(safe-area-inset-bottom));
+  .coverlines--l .cl:nth-of-type(n + 3) { display: none; }
+  .cl__pg { padding-top: 9px; font-size: 10px; }
+  .cl__t { font-size: clamp(17px, 4.9vw, 24px); }
+  .barcode { display: none; }
+  .scrollcue {
+    bottom: max(14px, env(safe-area-inset-bottom));
+    gap: 8px;
   }
-  .cl__t { font-size: clamp(15px, 2.4vw, 20px); }
-  .barcode,
-  .scrollcue { display: none; }
-  /* the stage is ~2-3 screens wide here: pieces beyond the visible band would
-     only cost style/compositing work on every scroll frame */
+  .scrollcue i { height: 26px; }
+  @keyframes cue {
+    to { transform: translateY(50px); }
+  }
+  /* the stage is ~2.5 screens wide here: pieces beyond the visible band, and
+     crumbs too small to read at this size, would only cost style and
+     compositing work on every scroll frame */
   .pc.is-edge,
+  .pc.is-crumb,
   .spr.is-edge { display: none; }
+}
+
+/* short phones: one cover line is all that fits above the fold */
+@media (orientation: portrait) and (max-height: 720px) {
+  .coverlines--l .cl:nth-of-type(n + 2) { display: none; }
+  .cover__pin { --deck: clamp(120px, 21svh, 170px); }
 }
 
 /* ---------- hero on landscape phones (short screens) ---------- */
@@ -2728,7 +2772,7 @@ a:focus-visible .roll > span {
   .ticket dl div { grid-template-columns: 1fr; gap: 2px; }
   .fab span { display: none; }
   .fab { padding: 15px; }
-  .totop { right: 20px; bottom: 80px; }
+  .totop { right: 20px; bottom: 80px; width: 44px; height: 44px; }
 }
 
 /* ==========================================================================
@@ -2740,17 +2784,38 @@ a:focus-visible .roll > span {
     background: rgba(28, 17, 12, 0.9);
     box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(245, 236, 220, 0.07);
   }
-  .nav.is-hidden { transform: none; }
   /* hover-follow photo and drag hint make no sense with fingers */
   .mfloat,
   .phototable__hint { display: none; }
   .polaroid { cursor: default; }
 
+  /* every control a finger has to hit clears 44px */
+  .chip,
+  .wheel__tab { min-height: 44px; }
+  .nav__right .btn--sm { min-height: 44px; }
+  .brand { min-height: 44px; }
+  /* plain link lists get the padding; the receipt's inline links are left
+     alone on purpose — spacing them out would break the paper-slip look */
+  .foot__links a { padding-block: 11px; }
+  .mmenu__foot a { padding-block: 12px; }
+
   /* lighter hero for phone GPUs: no per-piece drop shadows, rays stay still,
      sprinkles stop bobbing (the pieces still drift and explode on scroll) */
   .pc img { filter: none; }
-  .stage__rays { animation: fade-in 2s ease calc(var(--intro) + 0.5s) both; will-change: auto; }
+  /* the rays are a big masked conic gradient. Scaling them from --p with no
+     compositor layer repainted that gradient on every scroll frame, which was
+     the single most expensive thing in the hero — so they hold their size. */
+  .stage__rays {
+    animation: fade-in 2s ease calc(var(--intro) + 0.5s) both;
+    will-change: auto;
+    scale: 1;
+  }
   .spr__i { animation: fade-in 0.8s ease calc(var(--intro) + 0.9s) both; will-change: auto; }
+  /* nothing animates these on touch, so they don't need their own layer */
+  .spr,
+  .pc.is-still .pc__anim { will-change: auto; }
+  /* the cake's shadow is the one that reads; the rest were already off */
+  .cake-art { filter: drop-shadow(0 26px 30px rgba(0, 0, 0, 0.55)) !important; }
 }
 
 /* touch tablets in landscape keep the desktop menu layout, with photos inline */
@@ -2765,6 +2830,126 @@ a:focus-visible .roll > span {
     object-fit: cover;
     rotate: 4deg;
   }
+}
+
+/* ==========================================================================
+   00 Dining in — the walk-in table picker (landing page, no QR scanned)
+   ========================================================================== */
+.dine {
+  --bg: var(--cocoa);
+  --accent: var(--caramel);
+  color: var(--cream);
+  padding-top: clamp(150px, 15vw, 220px);
+  padding-bottom: clamp(120px, 13vw, 200px);
+}
+/* the ribbons overlap whichever section comes first — once that's this one,
+   the menu goes back to normal section spacing */
+.dine + .menu { padding-top: clamp(96px, 12vw, 180px); }
+.dine .kicker { color: var(--caramel); }
+.dine .lede { color: rgba(245, 236, 220, 0.72); }
+
+.tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 252px), 1fr));
+  gap: clamp(14px, 1.5vw, 22px);
+}
+
+/* each table is a cloakroom ticket: cherry stub, perforation, tear-off half */
+.tkt {
+  --stub: 74px;
+  --r: 0deg;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: 18px;
+  background: var(--cream);
+  color: var(--cocoa);
+  rotate: var(--r);
+  box-shadow: 0 18px 34px -24px #000;
+  transition: opacity 0.9s var(--ease) calc(var(--i, 0) * 70ms),
+    transform 0.9s var(--ease) calc(var(--i, 0) * 70ms),
+    rotate 0.5s var(--ease-back),
+    box-shadow 0.5s var(--ease);
+}
+/* the notches are punched in the section's own colour */
+.tkt::before,
+.tkt::after {
+  content: "";
+  position: absolute;
+  left: var(--stub);
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--bg);
+  translate: -50% 0;
+}
+.tkt::before { top: -7px; }
+.tkt::after { bottom: -7px; }
+.tkt:hover,
+.tkt:focus-visible {
+  rotate: 0deg;
+  transform: translateY(-6px);
+  box-shadow: 0 30px 46px -22px #000;
+  transition: transform 0.45s var(--ease-back), rotate 0.45s var(--ease-back), box-shadow 0.45s var(--ease);
+}
+.tkt:active { transform: translateY(-1px) scale(0.985); }
+
+.tkt__stub {
+  flex: 0 0 var(--stub);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  padding: 20px 6px;
+  border-radius: 18px 0 0 18px;
+  background: var(--cherry);
+  color: var(--cream);
+  line-height: 1;
+}
+.tkt__stub small {
+  font: 600 9.5px/1 var(--body);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+.tkt__stub b {
+  margin-top: 5px;
+  font: 400 clamp(28px, 2.6vw, 36px)/1 var(--display);
+  letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 144, "SOFT" 40;
+}
+.tkt__body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 18px 16px 18px 18px;
+  border-left: 2px dashed rgba(215, 38, 61, 0.4);
+}
+.tkt__seats {
+  font: 600 10.5px/1 var(--body);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.tkt__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: italic 500 clamp(18px, 1.45vw, 22px)/1.05 var(--display);
+  font-variation-settings: "SOFT" 100, "WONK" 1;
+  white-space: nowrap;
+}
+.tkt__go svg { transition: translate 0.4s var(--ease); }
+.tkt:hover .tkt__go svg,
+.tkt:focus-visible .tkt__go svg { translate: 7px 0; }
+
+.dine__note {
+  margin: clamp(26px, 3vw, 40px) 0 0;
+  font: 400 clamp(17px, 1.6vw, 21px)/1.3 var(--hand);
+  color: var(--caramel);
+  rotate: -1.2deg;
+  transform-origin: left center;
 }
 
 /* ==========================================================================
