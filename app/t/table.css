@@ -1070,6 +1070,194 @@
   font-size: 14px;
 }
 
+.tm-billed--big {
+  margin-top: 18px;
+  padding: 16px 18px;
+  font-size: 14.5px;
+}
+.tm-billed--big b {
+  font: 500 19px/1.2 var(--display);
+  font-style: italic;
+}
+
+/* ---------- "finished eating?" bar ---------- */
+.tm-dbar {
+  position: fixed;
+  z-index: 55;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: min(520px, calc(100% - 20px));
+  translate: -50% 0;
+  transition: translate 0.5s var(--ease), opacity 0.35s;
+}
+.tm-dbar:not(.is-on) {
+  translate: -50% 150%;
+  opacity: 0;
+  pointer-events: none;
+}
+.tm-dbar button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px 12px 18px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--cream);
+  color: var(--cocoa);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 20px 38px -18px rgba(28, 17, 12, 0.75), 0 0 0 1.5px var(--cocoa) inset;
+  transition: transform 0.35s var(--ease-back), background-color 0.3s;
+}
+.tm-dbar button:hover {
+  transform: translateY(-3px);
+}
+.tm-dbar button:active {
+  transform: scale(0.985);
+}
+.tm-dbar__t {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  font: italic 500 19px/1.05 var(--display);
+}
+.tm-dbar__t small {
+  overflow: hidden;
+  font: 400 12px/1.2 var(--body);
+  font-style: normal;
+  color: var(--ink-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tm-dbar b {
+  flex: none;
+  padding: 10px 14px;
+  border-radius: 13px;
+  background: var(--cherry);
+  color: var(--cream);
+  font: 600 13px/1 var(--body);
+}
+
+/* ---------- finish up / goodbye ---------- */
+.tm-bye {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: 18px;
+  background: rgba(28, 17, 12, 0.78);
+  animation: tm-fade 0.3s both;
+}
+.tm-bye__card {
+  width: min(430px, 100%);
+  margin: auto;
+  padding: 28px 22px 20px;
+  border-radius: 28px;
+  background: var(--paper);
+  text-align: center;
+  animation: tm-pop 0.6s var(--ease-back) both;
+}
+.tm-bye__card--bill {
+  padding: 18px 18px 20px;
+  text-align: left;
+}
+.tm-bye__card small {
+  display: block;
+  margin-top: 14px;
+  font: 600 11px/1 var(--body);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.tm-bye__card h2 {
+  margin: 8px 0 0;
+  font: 400 38px/1 var(--display);
+}
+.tm-bye__card h2 em {
+  color: var(--cherry);
+}
+.tm-bye__card p {
+  margin: 10px 0 0;
+  color: var(--ink-soft);
+  font-size: 14.5px;
+}
+.tm-bye__amt {
+  margin: 10px 0 0 !important;
+  font: 400 34px/1 var(--display) !important;
+  color: var(--cocoa) !important;
+}
+
+/* the guest's copy of the bill, on paper-tape */
+.tm-rcpt {
+  padding: 20px 18px 18px;
+  border-radius: 18px;
+  background: repeating-linear-gradient(var(--cream) 0 26px, rgba(38, 23, 15, 0.045) 26px 27px);
+  box-shadow: 0 0 0 1px rgba(38, 23, 15, 0.08) inset;
+}
+.tm-rcpt__head {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding-bottom: 14px;
+  border-bottom: 1.5px dashed rgba(38, 23, 15, 0.22);
+  text-align: center;
+}
+.tm-rcpt__head b {
+  font: 500 21px/1.1 var(--display);
+  font-style: italic;
+}
+.tm-rcpt__head span {
+  font: 600 10.5px/1 var(--body);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.tm-rcpt__lines {
+  margin: 0;
+  padding: 12px 0;
+  list-style: none;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+.tm-rcpt__lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 5px 0;
+  font-size: 14px;
+}
+.tm-rcpt__lines li span:last-child {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.tm-rcpt__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 12px;
+  border-top: 1.5px dashed rgba(38, 23, 15, 0.22);
+}
+.tm-rcpt__total span {
+  font: 600 11px/1 var(--body);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.tm-rcpt__total b {
+  font: 400 30px/1 var(--display);
+}
+.tm-rcpt__fine {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
 /* ---------- sent! ---------- */
 .tm-done {
   position: fixed;

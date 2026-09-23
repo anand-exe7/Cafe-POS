@@ -344,7 +344,10 @@ export default function TablesPage({ focus }: { focus?: string }) {
                       if (
                         await confirm({
                           title: `Clear ${f.table.label} without billing?`,
-                          body: "Use this if guests left without ordering or the tab was opened by mistake. Unserved orders are cancelled and their stock returned. To take payment, use “Bill this table” instead.",
+                          body:
+                            f.total > 0
+                              ? `${rupee(f.total)} on this tab will NOT be recorded as a sale — it drops out of Billing and Analytics for good. Unserved orders are cancelled and their stock returned. To take the payment and keep the sale, use “Bill this table” instead.`
+                              : "Use this if guests left without ordering or the tab was opened by mistake. Unserved orders are cancelled and their stock returned.",
                           ok: "Clear table",
                           danger: true,
                         })

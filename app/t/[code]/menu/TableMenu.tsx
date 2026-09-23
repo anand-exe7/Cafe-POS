@@ -8,7 +8,9 @@ import { Arrow, Cherry } from "../../../_components/bits";
 
 /* ============================================================
    TABLE MENU — what a guest sees after scanning the table QR.
-   Browse → add → send to kitchen → watch status → ask for the bill.
+   Browse → add → send to kitchen → watch status → finish up → pay.
+   When the counter settles the tab, the table's view reports it back here, so the
+   phone says goodbye and wipes itself clean for whoever sits down next.
    ============================================================ */
 
 type CSSVars = React.CSSProperties & Record<`--${string}`, string | number>;
@@ -107,11 +109,15 @@ export default function TableMenu({ initial }: { initial: TableView }) {
   const code = initial.table.code;
   const [view, setView] = useState(initial);
   const [cart, setCart] = useStored<Cart>(`clc-cart-${code}`, NO_CART);
-  const [saved] = useStored("clc-guest", NO_GUEST);
+  const [saved, setSaved] = useStored("clc-guest", NO_GUEST);
+  /* Survives a reload, so the goodbye still shows if they refresh after paying —
+     and a phone that never had a tab here is never shown someone else's receipt. */
+  const [mine, setMine] = useStored(`clc-open-${code}`, false);
   const [q, setQ] = useState("");
   const [eggless, setEggless] = useState(false);
   const [active, setActive] = useState(0);
   const [sheet, setSheet] = useState<null | "cart" | "tab">(null);
+  const [finish, setFinish] = useState(false);
   const [placed, setPlaced] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -155,6 +161,37 @@ export default function TableMenu({ initial }: { initial: TableView }) {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [cooking, refresh]);
+
+  /* ---------- this device's tab, and its ending ---------- */
+  useEffect(() => {
+    if (view.tab && !mine) setMine(true);
+  }, [view.tab, mine, setMine]);
+
+  const bye = mine && !view.tab ? view.closed : null;
+  const byeSeen = useRef(false);
+  useEffect(() => {
+    if (!bye) {
+      byeSeen.current = false;
+      return;
+    }
+    if (byeSeen.current) return;
+    byeSeen.current = true;
+    setCart(NO_CART);
+    setSheet(null);
+    setFinish(false);
+    setPlaced(null);
+  }, [bye, setCart]);
+
+  /* Hand the table back — nothing from this visit is left on the phone. */
+  const leave = () => {
+    setCart(NO_CART);
+    setSaved(NO_GUEST);
+    setMine(false);
+    setForm({ name: null, phone: null, guests: Math.min(12, Math.max(1, initial.table.seats)), note: "" });
+    setAskDetails(false);
+    setFinish(false);
+    refresh();
+  };
 
   /* ---------- derived ---------- */
   const byId = useMemo(() => new Map(view.menu.map((m) => [m.id, m])), [view.menu]);
@@ -296,6 +333,21 @@ export default function TableMenu({ initial }: { initial: TableView }) {
   const closeSheet = useCallback(() => setSheet(null), []);
   const tab = view.tab;
   const liveOrders = tab?.orders.filter((o) => o.status !== "cancelled").length ?? 0;
+  /* everything eaten so far, one line per item, for the end-of-meal receipt */
+  const billLines = useMemo(() => {
+    const m = new Map<string, { name: string; price: number; qty: number }>();
+    for (const o of tab?.orders ?? []) {
+      if (o.status === "cancelled") continue;
+      for (const it of o.items) {
+        const k = `${it.name}@${it.price}`;
+        const cur = m.get(k) ?? { name: it.name, price: it.price, qty: 0 };
+        cur.qty += it.qty;
+        m.set(k, cur);
+      }
+    }
+    return [...m.values()];
+  }, [tab]);
+  const doneBar = !!tab && !count && !finish && !bye;
 
   return (
     <div className="tm">
@@ -560,17 +612,11 @@ export default function TableMenu({ initial }: { initial: TableView }) {
                 );
               })}
             </ol>
-            {tab.billRequested ? (
-              <div className="tm-billed">
-                <b>We&apos;re getting your bill ready.</b>
-                <span>Please pay at the counter on your way out — thank you for visiting!</span>
-              </div>
-            ) : (
-              <button type="button" className="tm-send tm-send--ghost" disabled={busy} onClick={askBill}>
-                I&apos;m done — get my bill ready
-              </button>
-            )}
-            <button type="button" className="tm-send" onClick={() => setSheet(null)}>
+            <button type="button" className="tm-send" onClick={() => { setSheet(null); setFinish(true); }}>
+              {tab.billRequested ? "See your bill" : "Finished eating? Wrap up"}
+              <Arrow size={18} />
+            </button>
+            <button type="button" className="tm-send tm-send--ghost" onClick={() => setSheet(null)}>
               Order something else
             </button>
           </div>
@@ -578,6 +624,107 @@ export default function TableMenu({ initial }: { initial: TableView }) {
           <p className="tm-ticket__empty">Nothing on your tab yet.</p>
         )}
       </Sheet>
+
+      {/* ================= "finished eating?" bar ================= */}
+      <div className={`tm-dbar ${doneBar ? "is-on" : ""}`} aria-hidden={!doneBar}>
+        <button type="button" onClick={() => setFinish(true)} tabIndex={doneBar ? 0 : -1}>
+          <span className="tm-dbar__t">
+            {tab?.billRequested ? "Your bill is coming" : "Finished eating?"}
+            <small>
+              Table {view.table.label} · {rupee(tab?.total ?? 0)} on your tab
+            </small>
+          </span>
+          <b>{tab?.billRequested ? "View" : "Get the bill"}</b>
+          <Arrow size={18} />
+        </button>
+      </div>
+
+      {/* ================= finish up ================= */}
+      {finish && tab && !bye && (
+        <div className="tm-bye" role="dialog" aria-modal="true" aria-label="Finish up">
+          <div className="tm-bye__card tm-bye__card--bill">
+            <div className="tm-rcpt">
+              <div className="tm-rcpt__head">
+                <Cherry size={26} />
+                <b>{view.shopName}</b>
+                <span>
+                  Table {view.table.label}
+                  {tab.name ? ` · ${tab.name}` : ""}
+                </span>
+              </div>
+              <ul className="tm-rcpt__lines">
+                {billLines.map((l, i) => (
+                  <li key={i}>
+                    <span>
+                      {l.qty} × {l.name}
+                    </span>
+                    <span>{rupee(l.price * l.qty)}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="tm-rcpt__total">
+                <span>Total</span>
+                <b>{rupee(tab.total)}</b>
+              </div>
+              <p className="tm-rcpt__fine">Any coupon or discount is applied at the counter.</p>
+            </div>
+
+            {tab.billRequested ? (
+              <div className="tm-billed tm-billed--big">
+                <b>The counter knows — your bill is on its way ✺</b>
+                <span>
+                  Settle it on your way out and Table {view.table.label} is handed straight to the next guests.
+                </span>
+              </div>
+            ) : (
+              <button type="button" className="tm-send" disabled={busy} onClick={askBill}>
+                {busy ? "Telling the counter…" : "Yes — I'm done, bring the bill"}
+                {!busy && <Arrow size={18} />}
+              </button>
+            )}
+            <button type="button" className="tm-send tm-send--ghost" onClick={() => setFinish(false)}>
+              {tab.billRequested ? "Back to the menu" : "Not yet — order something else"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================= paid up — goodbye, and a clean slate for the next guests ================= */}
+      {bye && (
+        <div className="tm-bye" role="dialog" aria-modal="true" aria-label="Thank you">
+          <div className="tm-bye__card">
+            {bye.kind === "paid" ? (
+              <>
+                <svg viewBox="0 0 80 80" className="tm-done__tick" aria-hidden="true">
+                  <circle cx="40" cy="40" r="36" />
+                  <path d="M24 41 l11 11 l22 -24" />
+                </svg>
+                <small>Paid · {bye.invoiceNo}</small>
+                <h2>
+                  Thank you{bye.name ? `, ${bye.name.split(" ")[0]}` : ""} <em>✺</em>
+                </h2>
+                <p className="tm-bye__amt">{rupee(bye.total)}</p>
+                <p>
+                  {bye.itemCount} item{bye.itemCount === 1 ? "" : "s"} settled at the counter. Table {view.table.label} is
+                  clear and ready for the next guests.
+                </p>
+              </>
+            ) : (
+              <>
+                <small>Tab closed</small>
+                <h2>
+                  Table <em>cleared</em>
+                </h2>
+                <p>Our staff closed this tab without a bill. If that wasn&apos;t expected, please check at the counter.</p>
+              </>
+            )}
+            <button type="button" className="tm-send" onClick={leave}>
+              Start a fresh order
+            </button>
+            <p className="tm-fine">Nothing from this visit is kept on your phone.</p>
+          </div>
+        </div>
+      )}
 
       {/* ================= sent! ================= */}
       {placed !== null && (

@@ -141,11 +141,27 @@ export type AdminState = Omit<DB, "settings"> & {
   settings: { shopName: string; publicUrl: string };
 };
 
+/** One entry in the landing page's "pick your table" directory. */
+export type TableCard = Pick<Table, "label" | "seats" | "code">;
+
+/** A tab that closed in the last few minutes — "paid" once it was billed, "cleared"
+    if staff wiped it without taking payment. Lets the guest's phone close the loop
+    and reset itself for whoever sits down next. */
+export type TableClose = {
+  kind: "paid" | "cleared";
+  invoiceNo: string | null;
+  total: number;
+  itemCount: number;
+  name: string;
+  at: number;
+};
+
 /** What a customer at a table receives. */
 export type TableView = {
   table: { label: string; seats: number; code: string };
   shopName: string;
   menu: MenuItem[];
+  closed: TableClose | null;
   tab: {
     orders: { no: number; items: OrderItem[]; status: OrderStatus; subtotal: number; createdAt: number }[];
     total: number;
