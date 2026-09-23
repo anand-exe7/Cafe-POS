@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Image from "next/image";
 import piecesData from "../pieces.json";
 
 type Piece = {
@@ -19,7 +20,15 @@ type Piece = {
 type CSSVars = React.CSSProperties & Record<`--${string}`, string | number>;
 
 const pieces = piecesData as Piece[];
-const ASPECT = 1536 / 2752;
+const SRC_W = 2752;
+const SRC_H = 1536;
+const ASPECT = SRC_H / SRC_W;
+/* how wide the stage is drawn, as a multiple of the viewport width, on phones
+   and on desktop — only used to tell the image optimiser which size to send */
+const STAGE_VW_PHONE = 265;
+const STAGE_VW_DESK = 110;
+/* crumbs under this area are specks on a phone: dropped there (see .is-crumb) */
+const CRUMB_AREA = 9000;
 
 type Kind = "mint" | "berry" | "cream" | "swirl" | "choc";
 
@@ -92,6 +101,9 @@ export default function HeroStage() {
         const dx = p.cx - 0.5;
         const dy = p.cy - 0.5;
         const sign = i % 2 ? 1 : -1;
+        // pieces the phone layout drops (see .is-edge / .is-crumb): lazy, so a
+        // display:none piece never costs a phone the download
+        const phoneOnly = p.cx < 0.27 || p.cx > 0.73 || p.area < CRUMB_AREA;
         const style: CSSVars = {
           "--cx": `${p.cx * 100}%`,
           "--cy": `${p.cy * 100}%`,
@@ -108,13 +120,25 @@ export default function HeroStage() {
         return (
           <div
             key={p.file}
-            className={`pc ${back ? "pc--back" : p.cy < 0.38 ? "pc--under" : "pc--front"} is-${type} ${p.cx < 0.27 || p.cx > 0.73 ? "is-edge" : ""} ${p.area < 9000 && type !== "swirl" ? "is-still" : ""} drift-${dy < 0 ? "n" : "s"}${dx < 0 ? "w" : "e"}${AMP[type] > 20 ? "" : "-sm"}`}
+            className={`pc ${back ? "pc--back" : p.cy < 0.38 ? "pc--under" : "pc--front"} is-${type} ${p.cx < 0.27 || p.cx > 0.73 ? "is-edge" : ""} ${p.area < CRUMB_AREA ? "is-crumb" : ""} ${p.area < CRUMB_AREA && type !== "swirl" ? "is-still" : ""} drift-${dy < 0 ? "n" : "s"}${dx < 0 ? "w" : "e"}${AMP[type] > 20 ? "" : "-sm"}`}
             style={style}
           >
             <div className="pc__scroll">
               <div className="pc__burst">
                 <div className="pc__anim">
-                  <img src={p.file} alt="" draggable={false} />
+                  {/* the optimiser sends a phone-sized WebP: these PNGs are ~10x
+                      heavier than they need to be, and there are a lot of them.
+                      The ones the phone layout hides load lazily — with no box
+                      they are never fetched there at all. */}
+                  <Image
+                    src={p.file}
+                    alt=""
+                    width={Math.round(p.w * SRC_W)}
+                    height={Math.round(p.h * SRC_H)}
+                    sizes={`(max-width: 1100px) ${Math.ceil(p.w * STAGE_VW_PHONE)}vw, ${Math.ceil(p.w * STAGE_VW_DESK)}vw`}
+                    loading={phoneOnly ? "lazy" : "eager"}
+                    draggable={false}
+                  />
                 </div>
               </div>
             </div>
@@ -130,7 +154,16 @@ export default function HeroStage() {
           <div className="cake-drop">
             <div className="pc__px">
               <div className="cake-sway">
-                <img className="cake-art" src={cake.file} alt="" draggable={false} />
+                <Image
+                  className="cake-art"
+                  src={cake.file}
+                  alt=""
+                  width={Math.round(cake.w * SRC_W)}
+                  height={Math.round(cake.h * SRC_H)}
+                  sizes={`(max-width: 1100px) ${Math.ceil(cake.w * 1.29 * STAGE_VW_PHONE)}vw, ${Math.ceil(cake.w * 1.29 * STAGE_VW_DESK)}vw`}
+                  preload
+                  draggable={false}
+                />
               </div>
             </div>
           </div>

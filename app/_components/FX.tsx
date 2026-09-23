@@ -12,7 +12,7 @@ import { useEffect } from "react";
  *   [data-magnetic]      → element leans toward the pointer
  *   [data-tilt]          → 3D tilt under the pointer
  *   [data-drag]          → draggable polaroids
- *   [data-nav]           → solid once scrolled; tucks away on scroll-down only on desktop, past the cover
+ *   [data-nav]           → solid once scrolled; always on screen
  *   [data-fab]           → floating Order button, shown once the landing cover is passed
  *   [data-menu-toggle]   → mobile menu
  *   [data-toprogress]    → back-to-top ring
@@ -112,12 +112,24 @@ export default function FX() {
       }
     };
     // all rect reads happen first, then all writes — no forced reflow between them
+    /* --p is registered as non-inheriting (globals.css), so it has to land on
+       each element that reads it. Setting it on the section instead would
+       invalidate the style of everything inside — the cover alone holds ~200
+       nodes, and paid for all of them on every scroll frame. Sections whose
+       readers sit deeper (the story words, the gallery word, the back-to-top
+       ring) re-export it as --rp, which inherits; they need no entry here. */
+    const P_SINKS =
+      ".cover__meta,.masthead,.mast__l,.mast__r,.cover__after,.stage__rays," +
+      ".pc__scroll,.cake-scroll,.spr,.sticker,.coverlines,.scrollcue";
+    const sinksOf = new WeakMap<HTMLElement, HTMLElement[]>();
     const lastP = new WeakMap<HTMLElement, string>();
     const writeP = (el: HTMLElement, p: number) => {
       const v = clamp(p).toFixed(3);
       if (lastP.get(el) === v) return;
       lastP.set(el, v);
-      el.style.setProperty("--p", v);
+      let sinks = sinksOf.get(el);
+      if (!sinks) sinksOf.set(el, (sinks = [el, ...el.querySelectorAll<HTMLElement>(P_SINKS)]));
+      for (const s of sinks) s.style.setProperty("--p", v);
     };
     const updateProgress = () => {
       const vh = window.innerHeight;
@@ -144,12 +156,8 @@ export default function FX() {
     const nav = document.querySelector<HTMLElement>("[data-nav]");
     const topBtn = document.querySelector<HTMLElement>("[data-toprogress]");
     const fab = document.querySelector<HTMLElement>("[data-fab]");
-    let lastY = window.scrollY;
-    let curY = lastY;
+    let curY = window.scrollY;
     let maxScroll = 1;
-    // The nav only tucks away on large pointer screens, and never on the landing cover.
-    // Phones and tablets keep it on screen the whole time.
-    const canHideNav = window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 1025px)");
     const cover = document.querySelector<HTMLElement>(".cover");
     let coverEnd = 0;
     let vh = window.innerHeight;
@@ -161,12 +169,8 @@ export default function FX() {
     const updateChrome = () => {
       const y = window.scrollY;
       if (nav) {
+        // the bar stays on screen the whole way down — it only gains its solid backing
         nav.classList.toggle("is-solid", y > 40);
-        if (Math.abs(y - lastY) > 6) {
-          const hide = canHideNav.matches && y > lastY && y > coverEnd && !root.classList.contains("menu-open");
-          nav.classList.toggle("is-hidden", hide);
-          lastY = y;
-        }
       }
       // the floating Order button waits until the landing cover has been scrolled past
       fab?.classList.toggle("is-away", y < coverEnd - vh * 1.25);

@@ -1,7 +1,7 @@
 import { ApiError, mutate, read } from "./store";
 import { code, uid } from "./seed";
 import { computeBill, round2 } from "./money";
-import type { AdminState, Bill, Coupon, DB, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, Session, Table, TableView } from "./types";
+import type { AdminState, Bill, Coupon, DB, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, Session, Table, TableCard, TableClose, TableView } from "./types";
 
 /* Every read/write the app makes, with validation. Route handlers are thin wrappers. */
 
@@ -62,6 +62,22 @@ export function menuOf(db: DB): MenuItem[] {
     }));
 }
 
+/** How long after a tab closes the guest's phone still gets the goodbye. */
+const CLOSE_WINDOW = 20 * 60_000;
+
+function lastClose(db: DB, t: Table): TableClose | null {
+  let last: Session | null = null;
+  for (const s of db.sessions) {
+    if (s.tableId !== t.id || s.status === "open" || s.closedAt === null) continue;
+    if (!last || s.closedAt > last.closedAt!) last = s;
+  }
+  if (!last || Date.now() - last.closedAt! > CLOSE_WINDOW) return null;
+  const bill = last.billId ? db.bills.find((b) => b.id === last!.billId) ?? null : null;
+  return bill && bill.status === "completed"
+    ? { kind: "paid", invoiceNo: bill.invoiceNo, total: bill.total, itemCount: bill.itemCount, name: bill.customerName, at: last.closedAt! }
+    : { kind: "cleared", invoiceNo: null, total: 0, itemCount: 0, name: last.customerName, at: last.closedAt! };
+}
+
 function view(db: DB, t: Table): TableView {
   const s = openSession(db, t);
   const orders = s ? db.orders.filter((o) => o.sessionId === s.id) : [];
@@ -69,6 +85,7 @@ function view(db: DB, t: Table): TableView {
     table: { label: t.label, seats: t.seats, code: t.code },
     shopName: db.settings.shopName,
     menu: menuOf(db),
+    closed: s ? null : lastClose(db, t),
     tab: s
       ? {
           orders: orders.map((o) => ({ no: o.no, items: o.items, status: o.status, subtotal: o.subtotal, createdAt: o.createdAt })),
@@ -84,6 +101,14 @@ function view(db: DB, t: Table): TableView {
 export async function tableView(c: string) {
   const db = await read();
   return view(db, tableByCode(db, c));
+}
+
+/** The table directory the landing page offers to a guest who couldn't scan the QR. */
+export async function tableList(): Promise<TableCard[]> {
+  const db = await read();
+  return db.tables
+    .map((t) => ({ label: t.label, seats: t.seats, code: t.code }))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }));
 }
 
 /** Validates the lines, takes stock, opens a tab if needed and files the order. */
