@@ -46,8 +46,17 @@ export const code = (n: number) => Array.from(randomBytes(n), (b) => ALPHA[b % A
 
 export function seed(): DB {
   const now = Date.now();
+
+  /* The seed's ids and table codes are fixed, not random. On a writable host the
+     seed is written once and never runs again, so it makes no difference there.
+     On a read-only host (Vercel) the DB lives in memory and every serverless
+     instance re-seeds independently — with random ids each instance would hand
+     out different table codes, so a link from a page one instance rendered would
+     404 on another. Fixed ids keep every instance's menu and QR codes identical,
+     so the app is navigable as a live demo. Records created at runtime still use
+     the random uid()/code() below. */
   const products: Product[] = MENU.map(([name, category, price, stock, img, description, eggless, tags = []], i) => ({
-    id: uid(),
+    id: `sp${i + 1}`,
     name,
     category,
     price,
@@ -63,10 +72,10 @@ export function seed(): DB {
   }));
 
   const tables = [2, 2, 4, 4, 4, 6].map((seats, i) => ({
-    id: uid(),
+    id: `st${i + 1}`,
     label: `T${i + 1}`,
     seats,
-    code: code(6).toLowerCase(),
+    code: `tbl${String(i + 1).padStart(3, "0")}`,
     sessionId: null,
     createdAt: now + i,
   }));
@@ -82,7 +91,7 @@ export function seed(): DB {
     bills: [],
     users: [],
     coupons: [
-      { id: uid(), code: "KODAI10", percent: 10, minOrder: 500, expiresAt: null, limit: 100, used: 0, active: true, createdAt: now },
+      { id: "scoupon1", code: "KODAI10", percent: 10, minOrder: 500, expiresAt: null, limit: 100, used: 0, active: true, createdAt: now },
     ],
   };
 }
