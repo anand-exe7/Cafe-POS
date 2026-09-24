@@ -7,12 +7,14 @@ import { useAdmin } from "./Store";
 import { Btn, Field, Icon, Modal, cx, inputCls, type IconName } from "./kit";
 
 const NAV: { href: string; label: string; icon: IconName }[] = [
-  { href: "/admin", label: "Tables", icon: "tables" },
-  { href: "/admin/analytics", label: "Analytics", icon: "chart" },
-  { href: "/admin/orders", label: "Orders", icon: "orders" },
   { href: "/admin/billing", label: "Billing", icon: "billing" },
-  { href: "/admin/coupons", label: "Coupons", icon: "coupon" },
+  { href: "/admin/orders", label: "Orders", icon: "orders" },
+  { href: "/admin/analytics", label: "Analytics", icon: "chart" },
+  { href: "/admin", label: "Tables", icon: "tables" },
+  { href: "/admin/queue", label: "Live queue", icon: "utensils" },
   { href: "/admin/inventory", label: "Inventory", icon: "box" },
+  { href: "/admin/coupons", label: "Coupons", icon: "coupon" },
+  { href: "/admin/users", label: "Users", icon: "users" },
 ];
 
 const Cherry = () => (
@@ -89,14 +91,19 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     setMenu(false);
   }
 
-  const fresh = s.orders.filter((o) => o.status === "new").length;
+  const fresh = s.orders.filter((o) => o.source === "customer" && o.status === "new").length;
+  const cooking = s.orders.filter((o) => o.source === "customer" && o.status === "preparing").length;
   const billReq = floor.filter((f) => f.billRequested).length;
   const busy = floor.filter((f) => f.session).length;
   const low = s.products.filter((p) => p.active && p.stock !== null && p.stock <= p.lowAt).length;
 
   const badge: Record<string, React.ReactNode> = {
     "/admin": busy ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{busy}/{s.tables.length}</span> : null,
-    "/admin/orders": fresh ? <span className="adm-pulse grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white">{fresh}</span> : null,
+    "/admin/queue": fresh ? (
+      <span className="adm-pulse grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white">{fresh}</span>
+    ) : cooking ? (
+      <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700">{cooking}</span>
+    ) : null,
     "/admin/billing": billReq ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-amber-950">{billReq}</span> : null,
     "/admin/inventory": low ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700">{low}</span> : null,
   };
@@ -115,13 +122,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   const side = (
     <div className="flex h-full flex-col">
-      <Link href="/admin" className="flex items-center gap-3 px-5 pb-6 pt-6">
+      <Link href="/admin" className="adm-side__brand flex items-center gap-3 px-5 pb-6 pt-6">
         <Cherry />
         <span className="leading-tight">
-          <b className="block text-[18px] italic text-slate-900" style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 500 }}>
+          <b className="block text-[19px] italic" style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 500 }}>
             Chef Loving
           </b>
-          <small className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Admin console</small>
+          <small className="text-[10px] font-bold uppercase tracking-[0.18em]">Admin console</small>
         </span>
       </Link>
       <nav className="flex-1 space-y-1 px-3" aria-label="Admin">
@@ -131,12 +138,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             <Link
               key={n.href}
               href={n.href}
-              className={cx(
-                "group relative flex h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-semibold transition",
-                on ? "bg-red-50 text-red-600" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
-              )}
+              className={cx("adm-link flex h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-semibold", on && "is-on")}
             >
-              {on && <span className="absolute -left-3 top-2 bottom-2 w-1 rounded-r bg-red-600" />}
               <Icon name={n.icon} size={19} />
               <span className="flex-1">{n.label}</span>
               {badge[n.href]}
@@ -144,20 +147,20 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           );
         })}
       </nav>
-      <div className="space-y-1 border-t border-slate-100 px-3 py-4">
-        <button type="button" onClick={() => setSound(!sound)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
+      <div className="adm-side space-y-1 px-3 py-4" style={{ borderTop: "1px solid var(--line-dark)" }}>
+        <button type="button" onClick={() => setSound(!sound)} className="adm-link flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold">
           <Icon name={sound ? "bell" : "belloff"} size={17} />
           {sound ? "Order chime on" : "Order chime off"}
         </button>
-        <a href="/" target="_blank" rel="noopener noreferrer" className="flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
+        <a href="/" target="_blank" rel="noopener noreferrer" className="adm-link flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold">
           <Icon name="globe" size={17} />
           Guest website
         </a>
-        <button type="button" onClick={() => setSettings(true)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
+        <button type="button" onClick={() => setSettings(true)} className="adm-link flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold">
           <Icon name="sliders" size={17} />
           Settings
         </button>
-        <button type="button" onClick={signOut} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold text-slate-600 hover:bg-red-50 hover:text-red-600">
+        <button type="button" onClick={signOut} className="adm-link flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold">
           <Icon name="logout" size={17} />
           Sign out
         </button>
@@ -169,18 +172,18 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     <>
       <div className="adm-app">
         {/* sidebar — desktop */}
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] border-r border-slate-200/70 bg-white lg:block">{side}</aside>
+        <aside className="adm-side fixed inset-y-0 left-0 z-40 hidden w-[248px] lg:block">{side}</aside>
 
         {/* top bar — mobile */}
-        <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden">
-          <button type="button" onClick={() => setMenu(true)} className="grid h-10 w-10 place-items-center rounded-xl text-slate-700 hover:bg-slate-100" aria-label="Open menu">
+        <header className="adm-side sticky top-0 z-40 flex h-14 items-center gap-3 px-4 lg:hidden">
+          <button type="button" onClick={() => setMenu(true)} className="adm-link grid h-10 w-10 place-items-center rounded-xl" aria-label="Open menu">
             <Icon name="menu" size={20} />
           </button>
           <b className="flex-1 text-[16px] italic" style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 500 }}>
             Chef Loving · Admin
           </b>
           {fresh > 0 && (
-            <Link href="/admin/orders" className="rounded-full bg-red-600 px-3 py-1 text-[12px] font-bold text-white">
+            <Link href="/admin/queue" className="rounded-full bg-red-600 px-3 py-1 text-[12px] font-bold text-white">
               {fresh} new
             </Link>
           )}
@@ -188,13 +191,15 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         {menu && (
           <div className="fixed inset-0 z-50 lg:hidden">
             <button type="button" className="adm-scrim absolute inset-0 bg-slate-900/40" onClick={() => setMenu(false)} aria-label="Close menu" />
-            <aside className="adm-in absolute inset-y-0 left-0 w-[270px] bg-white shadow-2xl">{side}</aside>
+            <aside className="adm-side adm-in absolute inset-y-0 left-0 w-[270px] shadow-2xl">{side}</aside>
           </div>
         )}
 
-        <div className="lg:pl-[248px]">
-          <main className="mx-auto max-w-[1480px] p-3 sm:p-6">{children}</main>
-          <footer className="mx-auto flex max-w-[1480px] flex-col items-center gap-3 border-t border-slate-200 px-6 py-7 text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:flex-row sm:justify-between">
+        {/* main grows to fill whatever the page doesn't use, so the footer sits on
+            the bottom edge of a short page instead of floating under the card */}
+        <div className="flex flex-1 flex-col lg:pl-[248px]">
+          <main className="mx-auto w-full max-w-[1480px] flex-1 p-3 sm:p-6">{children}</main>
+          <footer className="mx-auto flex w-full max-w-[1480px] flex-col items-center gap-3 border-t border-slate-200 px-6 py-7 text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:flex-row sm:justify-between">
             <span>© 2026 All rights reserved. Chef Loving Cakes.</span>
             <span>
               Powered by <span className="text-red-600">Cenexa Systems</span> ©2026

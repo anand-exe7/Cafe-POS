@@ -166,7 +166,7 @@ export function PageHead({ title, sub, right, bar }: { title: string; sub?: Reac
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div className={cx(bar && "border-l-[5px] border-red-600 pl-3")}>
-        <h1 className="adm-num text-[28px] font-extrabold leading-tight tracking-tight text-slate-900 sm:text-[32px]">{title}</h1>
+        <h1 className="adm-title text-[32px] leading-[1.05] text-slate-900 sm:text-[40px]">{title}</h1>
         {sub && <p className="mt-1 text-[14px] text-slate-500">{sub}</p>}
       </div>
       {right && <div className="flex flex-wrap items-center gap-2">{right}</div>}
@@ -225,6 +225,8 @@ const BTN = {
   soft: "bg-red-50 text-red-600 border border-red-100 hover:bg-red-100",
   green: "bg-[#22c55e] text-white hover:bg-[#16a34a] shadow-[0_8px_18px_-10px_rgba(22,163,74,.9)]",
   plain: "text-slate-600 hover:bg-slate-100",
+  ok: "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+  warn: "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100",
 } as const;
 
 export function Btn({
@@ -398,19 +400,51 @@ function Layer({ children }: { children: React.ReactNode }) {
   return host ? createPortal(children, host) : <>{children}</>;
 }
 
+/* One shared scroll lock, counted. Overlays stack — a drawer can raise the
+   confirm modal on top of itself — and when each one saved and restored the
+   page's overflow on its own, the inner one captured "hidden" as the value to
+   put back, so the page stayed unscrollable after everything had closed.
+   Only the last overlay out releases the page, and the width the scrollbar
+   leaves behind is padded back so the content doesn't jump sideways. */
+let locks = 0;
+let prevOverflow = "";
+let prevPad = "";
+
+function lockScroll() {
+  const html = document.documentElement;
+  if (locks++) return;
+  prevOverflow = html.style.overflow;
+  prevPad = html.style.paddingRight;
+  const before = html.clientWidth;
+  html.style.overflow = "hidden";
+  const gap = html.clientWidth - before;
+  if (gap > 0) html.style.paddingRight = `${gap}px`;
+}
+
+function unlockScroll() {
+  if (locks > 0 && --locks) return;
+  const html = document.documentElement;
+  html.style.overflow = prevOverflow;
+  html.style.paddingRight = prevPad;
+}
+
 function useEsc(open: boolean, onClose: () => void) {
+  /* onClose is written inline at every call site, so keep it in a ref: a new
+     identity must not tear the lock down and take it again mid-render. */
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
     if (!open) return;
-    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const k = (e: KeyboardEvent) => e.key === "Escape" && close.current();
     window.addEventListener("keydown", k);
-    const html = document.documentElement;
-    const prev = html.style.overflow;
-    html.style.overflow = "hidden";
+    lockScroll();
     return () => {
       window.removeEventListener("keydown", k);
-      html.style.overflow = prev;
+      unlockScroll();
     };
-  }, [open, onClose]);
+  }, [open]);
 }
 
 export function Modal({

@@ -56,11 +56,13 @@ export default function OrdersPage() {
 
   const range = date === "any" ? null : rangeOf(date, from, to);
   const needle = q.trim().toLowerCase();
-  const fresh = s.orders.filter((o) => o.status === "new").length;
 
+  /* The counter's own orders. What guests send from their phones is worked off
+     the Live queue instead, so the two never get mixed up in one list. */
   const orders = useMemo(
     () =>
       s.orders
+        .filter((o) => o.source === "counter")
         .filter((o) => (status === "all" || o.status === status) && inRange(o.createdAt, range))
         .filter((o) => !needle || `#${o.no} ${o.no} ${tableLabel(o.tableId)} ${o.customerName} ${o.customerPhone} ${o.items.map((i) => i.name).join(" ")}`.toLowerCase().includes(needle))
         .sort((a, b) => b.createdAt - a.createdAt),
@@ -120,7 +122,7 @@ export default function OrdersPage() {
           setLimit(50);
         }}
         options={[
-          { v: "orders", t: "Table orders", n: fresh },
+          { v: "orders", t: "Counter orders" },
           { v: "bills", t: "Bills & invoices" },
         ]}
       />
@@ -325,7 +327,7 @@ export default function OrdersPage() {
           )}
           {!count && (
             <Empty icon={view === "orders" ? "orders" : "billing"} title={view === "orders" ? "No orders match" : "No bills match"}>
-              {view === "orders" ? "Orders from table QR codes land here instantly." : "Settled tabs and counter bills show up here."}
+              {view === "orders" ? "Orders the counter puts in land here. What guests send from their phones is on the Live queue." : "Settled tabs and counter bills show up here."}
             </Empty>
           )}
         </div>

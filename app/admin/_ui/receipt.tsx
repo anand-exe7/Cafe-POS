@@ -21,7 +21,7 @@ export function billText(b: Bill, shop: string) {
     `*Grand total: ${rupee(b.total)}*`,
     `Paid by ${PAY[b.payment]}`,
     "",
-    "Thank you for visiting — see you again soon! 🍒",
+    "Thank you for visiting — see you again soon!",
   ];
   return L.filter((l, i) => l !== "" || i === L.length - 2).join("\n");
 }
@@ -94,7 +94,7 @@ export function Receipt({ b, shop }: { b: Bill; shop: string }) {
         </div>
       )}
       <hr />
-      <p className="c">✺ thank you — come again ✺</p>
+      <p className="c">thank you — come again</p>
     </div>
   );
 }
