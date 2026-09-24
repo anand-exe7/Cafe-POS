@@ -30,7 +30,6 @@ const cache: Cache = (g.__clcStore ??= { db: null, mtime: 0, shape: SHAPE, queue
    in the in-memory cache for the life of the instance — enough to run the app
    as a live demo. Swapping in a real database means replacing load()/persist()
    below; nothing else in the app touches storage. */
-const READ_ONLY_FS = new Set(["EROFS", "EACCES", "EPERM"]);
 
 export class ApiError extends Error {
   constructor(message: string, public status = 400) {
@@ -54,9 +53,12 @@ async function persist(db: DB) {
     }
     cache.mtime = (await fs.stat(FILE)).mtimeMs;
   } catch (e) {
-    // Only a read-only/permission-denied filesystem falls back to memory; a real
-    // I/O failure on a writable disk still surfaces as an error.
-    if (!READ_ONLY_FS.has((e as NodeJS.ErrnoException)?.code ?? "")) throw e;
+    // Any failure to write the file (a read-only serverless disk is the usual
+    // one, but permissions or a missing writable path count too) drops us to an
+    // in-memory database for the life of the instance instead of crashing every
+    // page. Logged so a genuine disk problem on a writable host stays visible.
+    const code = (e as NodeJS.ErrnoException)?.code ?? "unknown";
+    if (!cache.readOnly) console.warn(`[store] cannot persist db.json (${code}); running from memory only.`);
     cache.readOnly = true;
   }
 }
