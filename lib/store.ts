@@ -21,9 +21,16 @@ const FILE = path.join(DIR, "db.json");
    fields. */
 const SHAPE = 2;
 
-type Cache = { db: DB | null; mtime: number; shape: number; queue: Promise<unknown> };
+type Cache = { db: DB | null; mtime: number; shape: number; queue: Promise<unknown>; readOnly: boolean };
 const g = globalThis as typeof globalThis & { __clcStore?: Cache };
-const cache: Cache = (g.__clcStore ??= { db: null, mtime: 0, shape: SHAPE, queue: Promise.resolve() });
+const cache: Cache = (g.__clcStore ??= { db: null, mtime: 0, shape: SHAPE, queue: Promise.resolve(), readOnly: false });
+
+/* A serverless host (Vercel, etc.) ships the code on a read-only filesystem, so
+   persist() can't write db.json there. Rather than crash, we keep the whole DB
+   in the in-memory cache for the life of the instance — enough to run the app
+   as a live demo. Swapping in a real database means replacing load()/persist()
+   below; nothing else in the app touches storage. */
+const READ_ONLY_FS = new Set(["EROFS", "EACCES", "EPERM"]);
 
 export class ApiError extends Error {
   constructor(message: string, public status = 400) {
@@ -32,18 +39,26 @@ export class ApiError extends Error {
 }
 
 async function persist(db: DB) {
-  await fs.mkdir(DIR, { recursive: true });
+  if (cache.readOnly) return; // known read-only host: the cache is the database
   const body = JSON.stringify(db);
-  const tmp = `${FILE}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, body, "utf8");
   try {
-    await fs.rename(tmp, FILE);
-  } catch {
-    // Windows can refuse the rename while something (AV, an editor) holds the file
-    await fs.writeFile(FILE, body, "utf8");
-    await fs.rm(tmp, { force: true });
+    await fs.mkdir(DIR, { recursive: true });
+    const tmp = `${FILE}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, body, "utf8");
+    try {
+      await fs.rename(tmp, FILE);
+    } catch {
+      // Windows can refuse the rename while something (AV, an editor) holds the file
+      await fs.writeFile(FILE, body, "utf8");
+      await fs.rm(tmp, { force: true });
+    }
+    cache.mtime = (await fs.stat(FILE)).mtimeMs;
+  } catch (e) {
+    // Only a read-only/permission-denied filesystem falls back to memory; a real
+    // I/O failure on a writable disk still surfaces as an error.
+    if (!READ_ONLY_FS.has((e as NodeJS.ErrnoException)?.code ?? "")) throw e;
+    cache.readOnly = true;
   }
-  cache.mtime = (await fs.stat(FILE)).mtimeMs;
 }
 
 async function load(): Promise<DB> {
@@ -52,7 +67,10 @@ async function load(): Promise<DB> {
     st = await fs.stat(FILE);
   } catch {}
 
-  if (cache.db && cache.shape === SHAPE && st && st.mtimeMs === cache.mtime) return cache.db;
+  /* The warm in-memory copy is authoritative when the file is unchanged, or when
+     there's no file to reconcile against on a read-only host — otherwise every
+     request there would re-seed and throw away live edits. */
+  if (cache.db && cache.shape === SHAPE && (st ? st.mtimeMs === cache.mtime : cache.readOnly)) return cache.db;
 
   if (!st) {
     const db = seed();
