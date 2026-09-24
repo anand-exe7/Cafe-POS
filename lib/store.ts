@@ -14,9 +14,16 @@ import type { DB } from "./types";
 const DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const FILE = path.join(DIR, "db.json");
 
-type Cache = { db: DB | null; mtime: number; queue: Promise<unknown> };
+/* Bump whenever migrate() gains a step. The cache is parked on globalThis so it
+   survives a dev hot-reload, which means a db parsed by the previous build can
+   outlive the code that knew its shape; stamping it makes that copy fall out of
+   the cache and be re-read instead of handing back a record missing its new
+   fields. */
+const SHAPE = 2;
+
+type Cache = { db: DB | null; mtime: number; shape: number; queue: Promise<unknown> };
 const g = globalThis as typeof globalThis & { __clcStore?: Cache };
-const cache: Cache = (g.__clcStore ??= { db: null, mtime: 0, queue: Promise.resolve() });
+const cache: Cache = (g.__clcStore ??= { db: null, mtime: 0, shape: SHAPE, queue: Promise.resolve() });
 
 export class ApiError extends Error {
   constructor(message: string, public status = 400) {
@@ -45,18 +52,35 @@ async function load(): Promise<DB> {
     st = await fs.stat(FILE);
   } catch {}
 
-  if (cache.db && st && st.mtimeMs === cache.mtime) return cache.db;
+  if (cache.db && cache.shape === SHAPE && st && st.mtimeMs === cache.mtime) return cache.db;
 
   if (!st) {
     const db = seed();
     await persist(db);
     cache.db = db;
+    cache.shape = SHAPE;
     return db;
   }
   const db = JSON.parse(await fs.readFile(FILE, "utf8")) as DB;
+  migrate(db);
   cache.db = db;
+  cache.shape = SHAPE;
   cache.mtime = st.mtimeMs;
   return db;
+}
+
+/* Fills in fields added after a file was written, so an older data/db.json keeps
+   working. Runs on read only — the next write persists whatever it filled in. */
+function migrate(db: DB) {
+  /* `source` arrived with the split between the live queue (guest orders) and
+     the counter's own. Anything filed before it is read as a guest order, which
+     is where all but a handful came from. */
+  for (const o of db.orders) o.source ??= "customer";
+
+  /* `users` arrived with the Users page. Before it, the only way in was the one
+     shop password, which still works — an empty list just means nobody has been
+     given a login of their own yet. */
+  db.users ??= [];
 }
 
 /** Read-only snapshot. Do not mutate the result. */
@@ -73,6 +97,7 @@ export function mutate<T>(fn: (db: DB) => T): Promise<T> {
     draft.version += 1;
     await persist(draft);
     cache.db = draft;
+    cache.shape = SHAPE;
     return out;
   });
   cache.queue = run.catch(() => {});

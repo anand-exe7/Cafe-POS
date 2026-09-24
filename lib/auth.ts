@@ -23,16 +23,25 @@ function eq(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export function checkPassword(db: DB, pw: string) {
-  const env = process.env.ADMIN_PASSWORD;
-  if (env) return eq(pw, env);
-  const h = db.settings.adminHash;
-  if (!h) return false;
-  const [salt, key] = h.split(":");
+function matches(hash: string | null | undefined, pw: string) {
+  if (!hash) return false;
+  const [salt, key] = hash.split(":");
+  if (!salt || !key) return false;
   return eq(scryptSync(pw, salt, 32).toString("hex"), key);
 }
 
-export const needsSetup = (db: DB) => !process.env.ADMIN_PASSWORD && !db.settings.adminHash;
+/* The shop password still opens the panel exactly as it always has. Staff given
+   admin access on the Users page get a password of their own that works the same
+   way, so nobody has to share one and access can be taken back per person
+   without changing everyone else's. The sign-in form stays a single box: we try
+   the shop's password, then each staff hash. */
+export function checkPassword(db: DB, pw: string) {
+  const env = process.env.ADMIN_PASSWORD;
+  if (env ? eq(pw, env) : matches(db.settings.adminHash, pw)) return true;
+  return db.users.some((u) => matches(u.passwordHash, pw));
+}
+
+export const needsSetup = (db: DB) => !process.env.ADMIN_PASSWORD && !db.settings.adminHash && !db.users.length;
 
 const sign = (secret: string, exp: number) => createHmac("sha256", secret).update(String(exp)).digest("base64url");
 

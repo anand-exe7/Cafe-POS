@@ -38,7 +38,7 @@ export default function LoginForm({ setup }: { setup: boolean }) {
           <circle cx="9" cy="22" r="6.5" fill="#d7263d" />
           <circle cx="23" cy="20" r="6.5" fill="#b81d33" />
         </svg>
-        <h1 className="adm-num mt-4 text-[28px] font-extrabold tracking-tight text-slate-900">{setup ? "Set up admin" : "Admin sign in"}</h1>
+        <h1 className="adm-title mt-4 text-[32px] leading-none text-slate-900">{setup ? "Set up admin" : "Admin sign in"}</h1>
         <p className="mt-1 text-[14px] text-slate-500">
           {setup ? "First time here — choose the password your staff will use for this console." : "Chef Loving Cakes · tables, orders & billing"}
         </p>

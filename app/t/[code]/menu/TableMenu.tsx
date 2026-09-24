@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import Link from "next/link";
-import type { MenuItem, OrderStatus, TableView } from "@/lib/types";
+import type { MenuItem, OrderStatus, TableClose, TableView } from "@/lib/types";
 import { rupee } from "@/lib/money";
 import { Arrow, Cherry } from "../../../_components/bits";
 
@@ -44,6 +43,12 @@ function put(key: string, v: unknown) {
   } catch {}
   subs.forEach((f) => f());
 }
+/* Same store, but memory only — the value dies with the page. Used for the
+   receipt on screen, which must not come back on the next visit. */
+function putMem(key: string, v: unknown) {
+  mem.set(key, v);
+  subs.forEach((f) => f());
+}
 function useStored<T>(key: string, fallback: T) {
   const v = useSyncExternalStore(subscribe, () => peek(key, fallback), () => fallback);
   const set = useCallback((next: T | ((prev: T) => T)) => put(key, typeof next === "function" ? (next as (p: T) => T)(peek(key, fallback)) : next), [key, fallback]);
@@ -51,6 +56,14 @@ function useStored<T>(key: string, fallback: T) {
 }
 const NO_CART: Cart = {};
 const NO_GUEST = { name: "", phone: "" };
+
+/* Mobiles are a bare 10-digit number here too, so the counter and the guest
+   agree on what was typed. A pasted +91 / leading 0 prefix is dropped. */
+const tenDigits = (v: string) => {
+  const d = v.replace(/\D/g, "");
+  const bare = d.length === 12 && d.startsWith("91") ? d.slice(2) : d.length === 11 && d.startsWith("0") ? d.slice(1) : d;
+  return bare.slice(0, 10);
+};
 const noop = () => () => {};
 const greeting = () => {
   const h = new Date().getHours();
@@ -110,9 +123,14 @@ export default function TableMenu({ initial }: { initial: TableView }) {
   const [view, setView] = useState(initial);
   const [cart, setCart] = useStored<Cart>(`clc-cart-${code}`, NO_CART);
   const [saved, setSaved] = useStored("clc-guest", NO_GUEST);
-  /* Survives a reload, so the goodbye still shows if they refresh after paying —
-     and a phone that never had a tab here is never shown someone else's receipt. */
+  /* True while this phone has a tab running at this table, so a phone that never
+     ordered here is never shown someone else's receipt. */
   const [mine, setMine] = useStored(`clc-open-${code}`, false);
+  /* The close this phone has already been thanked for (its `closed.at`). The
+     receipt is a one-time thing: it shows in full once, then this marker retires
+     it, so closing the page and scanning again lands on a clean menu and the next
+     order starts a brand-new tab. 0 = nothing owed yet. */
+  const [seenClose, setSeenClose] = useStored(`clc-seen-${code}`, 0);
   const [q, setQ] = useState("");
   const [eggless, setEggless] = useState(false);
   const [active, setActive] = useState(0);
@@ -123,10 +141,9 @@ export default function TableMenu({ initial }: { initial: TableView }) {
   const [err, setErr] = useState("");
   const hello = useSyncExternalStore(noop, greeting, () => "Welcome");
   // null = not typed yet → fall back to what this phone remembered last time
-  const [form, setForm] = useState<{ name: string | null; phone: string | null; guests: number; note: string }>({
+  const [form, setForm] = useState<{ name: string | null; phone: string | null; note: string }>({
     name: null,
     phone: null,
-    guests: Math.min(12, Math.max(1, initial.table.seats)),
     note: "",
   });
   const guest = { ...form, name: form.name ?? saved.name, phone: form.phone ?? saved.phone };
@@ -167,29 +184,39 @@ export default function TableMenu({ initial }: { initial: TableView }) {
     if (view.tab && !mine) setMine(true);
   }, [view.tab, mine, setMine]);
 
-  const bye = mine && !view.tab ? view.closed : null;
-  const byeSeen = useRef(false);
+  /* The receipt on screen. It lives in the memory-only half of the store, so it
+     survives the re-render that retires the visit below but never a reload. */
+  const bye = useSyncExternalStore(subscribe, () => peek<TableClose | null>(`clc-bye-${code}`, null), () => null);
+
   useEffect(() => {
-    if (!bye) {
-      byeSeen.current = false;
-      return;
+    if (view.tab) return; // the tab is still running — nothing has ended
+    if (!mine) return; // this phone was never part of it
+    const close = view.closed;
+    if (close && close.at === seenClose) return; // already thanked for this one
+
+    /* The counter settled this phone's tab (or it was settled long enough ago
+       that the close has aged out of the view). Either way the visit is over, so
+       everything this phone was keeping about it goes now — the next scan lands
+       on a clean menu and the next order opens a brand-new tab. The receipt is
+       shown once, here, and `seenClose` retires it for good. */
+    if (close) {
+      putMem(`clc-bye-${code}`, close);
+      setSeenClose(close.at);
     }
-    if (byeSeen.current) return;
-    byeSeen.current = true;
+    setMine(false);
     setCart(NO_CART);
+    setSaved(NO_GUEST);
+  }, [view.tab, view.closed, mine, seenClose, code, setMine, setSeenClose, setCart, setSaved]);
+
+  /* Hand the table back. The phone was already wiped when the receipt went up,
+     so this just drops it and returns to a fresh menu without a reload. */
+  const leave = () => {
+    putMem(`clc-bye-${code}`, null);
+    setForm({ name: null, phone: null, note: "" });
+    setAskDetails(false);
     setSheet(null);
     setFinish(false);
     setPlaced(null);
-  }, [bye, setCart]);
-
-  /* Hand the table back — nothing from this visit is left on the phone. */
-  const leave = () => {
-    setCart(NO_CART);
-    setSaved(NO_GUEST);
-    setMine(false);
-    setForm({ name: null, phone: null, guests: Math.min(12, Math.max(1, initial.table.seats)), note: "" });
-    setAskDetails(false);
-    setFinish(false);
     refresh();
   };
 
@@ -282,7 +309,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
     if (unavailable.length) return setErr("Some items changed — please adjust the ones marked below.");
     if (needDetails) {
       if (!view.tab && !guest.name.trim()) return setErr("Please tell us your name.");
-      if (!/^(\+?91)?[6-9]\d{9}$/.test(guest.phone.replace(/[\s-]/g, ""))) return setErr("Please enter a valid 10-digit mobile number.");
+      if (!/^[6-9]\d{9}$/.test(guest.phone)) return setErr("Please enter a valid 10-digit mobile number.");
     }
     setBusy(true);
     try {
@@ -294,7 +321,6 @@ export default function TableMenu({ initial }: { initial: TableView }) {
           items: lines.map((l) => ({ productId: l.id, qty: l.qty })),
           name: guest.name,
           phone: needDetails ? guest.phone : "",
-          guests: guest.guests,
           note: guest.note,
         }),
       });
@@ -353,13 +379,10 @@ export default function TableMenu({ initial }: { initial: TableView }) {
     <div className="tm">
       {/* ================= header ================= */}
       <header className="tm-top">
-        <Link href={`/t/${code}`} className="tm-top__back" aria-label="Back to the welcome page">
-          <Arrow size={18} />
-        </Link>
-        <Link href={`/t/${code}`} className="tm-brand">
+        <span className="tm-brand">
           <Cherry size={22} />
           <em>Chef Loving</em>
-        </Link>
+        </span>
         {tab ? (
           <button type="button" className="tm-tabbtn" onClick={() => setSheet("tab")}>
             <span>Your tab</span>
@@ -537,15 +560,9 @@ export default function TableMenu({ initial }: { initial: TableView }) {
                 )}
                 <label className="tm-field">
                   <span>Mobile (WhatsApp)</span>
-                  <input inputMode="tel" autoComplete="tel-national" maxLength={14} value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} placeholder="98765 43210" />
+                  <input inputMode="numeric" autoComplete="tel-national" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: tenDigits(e.target.value) })} placeholder="9876543210" />
                 </label>
               </div>
-              {!view.tab && (
-                <div className="tm-guests">
-                  <span>Guests at the table</span>
-                  <Stepper size="sm" qty={guest.guests} max={20} name="guest" onChange={(n) => setGuest({ ...guest, guests: Math.max(1, n) })} />
-                </div>
-              )}
             </div>
           )}
 
