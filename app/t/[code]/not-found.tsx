@@ -11,7 +11,7 @@ export default function TableNotFound() {
       </h1>
       <p>The QR may have been replaced. Please ask our staff — they&apos;ll get you sorted in a minute.</p>
       <Link href="/" className="tm-send">
-        Visit Chef Loving Cakes
+        Pick your table
       </Link>
     </main>
   );

@@ -1,30 +1,21 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import Landing from "../../_components/Landing";
+import { notFound, redirect } from "next/navigation";
 import { tableView } from "@/lib/ops";
 import { ApiError } from "@/lib/store";
-import "../table.css";
 
-/* A guest scanned a table QR: show the landing page, with every "order" button
-   leading to this table's menu. */
+/* A guest scanned a table QR. The printed cards point here, so this route stays
+   and simply opens that table's menu — the magazine landing page that used to
+   greet them is parked in `landing/` and no longer served. An unknown code
+   still gets the "table isn't active" page rather than a redirect loop. */
 
 export const dynamic = "force-dynamic";
 
-async function load(code: string) {
+export default async function TablePage({ params }: PageProps<"/t/[code]">) {
+  const { code } = await params;
   try {
-    return await tableView(code);
+    await tableView(code);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) notFound();
     throw e;
   }
-}
-
-export async function generateMetadata({ params }: PageProps<"/t/[code]">): Promise<Metadata> {
-  const v = await load((await params).code);
-  return { title: `Table ${v.table.label} | ${v.shopName}`, robots: { index: false } };
-}
-
-export default async function TablePage({ params }: PageProps<"/t/[code]">) {
-  const v = await load((await params).code);
-  return <Landing table={{ label: v.table.label, code: v.table.code }} />;
+  redirect(`/t/${encodeURIComponent(code)}/menu`);
 }

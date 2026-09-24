@@ -13,7 +13,16 @@ type Line = { key: number; productId: string | null; name: string; price: string
 const box = "rounded-[22px] border border-slate-100 bg-white p-5 shadow-[0_2px_12px_-4px_rgba(15,23,42,.1)] sm:p-6";
 const lbl = "mb-2 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700";
 const big = "h-[52px] w-full rounded-xl border border-slate-300 bg-white px-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
-const okPhone = (p: string) => /^(\+?91)?[6-9]\d{9}$/.test(p.replace(/[\s-]/g, ""));
+/* Mobiles are stored and sent as a bare 10-digit number — the country code is
+   added at the wa.me link, so anything longer here is a prefix to drop, not
+   part of the number. Kept in the change handler rather than maxLength so a
+   pasted "+91 98765 43210" loses the prefix instead of its last two digits. */
+const tenDigits = (v: string) => {
+  const d = v.replace(/\D/g, "");
+  const bare = d.length === 12 && d.startsWith("91") ? d.slice(2) : d.length === 11 && d.startsWith("0") ? d.slice(1) : d;
+  return bare.slice(0, 10);
+};
+const okPhone = (p: string) => /^[6-9]\d{9}$/.test(p);
 const sigOf = (f: FloorTable) => f.orders.map((o) => o.id + o.status).join("|");
 
 let seq = 0;
@@ -130,7 +139,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
         <div className="flex flex-wrap items-center gap-3">
           <span className="h-7 w-[5px] rounded-full bg-red-600" />
-          <h1 className="adm-num text-[24px] font-extrabold tracking-tight text-slate-900">POS Billing Panel</h1>
+          <h1 className="adm-title text-[28px] leading-none text-slate-900">POS Billing Panel</h1>
           <span className="hidden h-5 w-px bg-slate-300 sm:block" />
           <span className="text-[13px] text-slate-500">Quick invoice generator &amp; database synced checkout</span>
         </div>
@@ -224,7 +233,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
               </label>
               <label>
                 <span className={lbl}>Mobile number (WhatsApp)</span>
-                <input className={cx(big, phone && !okPhone(phone) && "border-red-400")} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Enter 10-digit number" inputMode="tel" maxLength={14} />
+                <input className={cx(big, phone && !okPhone(phone) && "border-red-400")} value={phone} onChange={(e) => setPhone(tenDigits(e.target.value))} placeholder="Enter 10-digit number" inputMode="numeric" autoComplete="tel-national" />
               </label>
             </div>
           </section>

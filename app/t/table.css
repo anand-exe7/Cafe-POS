@@ -106,7 +106,9 @@
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--paper);
-  padding-bottom: 120px;
+  /* room for whichever bar is docked at the bottom (cart / "finished eating?"),
+     which on a phone with a home indicator sits that much further up */
+  padding-bottom: calc(118px + env(safe-area-inset-bottom));
 }
 
 /* ---------- header ---------- */
@@ -318,6 +320,9 @@
   padding: 12px max(16px, calc((100% - 1080px) / 2));
   overflow-x: auto;
   scrollbar-width: none;
+  /* keep a sideways flick on the chips from turning into the browser's
+     back-swipe when the rail is already at either end */
+  overscroll-behavior-x: contain;
   background: var(--paper);
   box-shadow: 0 1px 0 var(--line-light);
 }
@@ -873,14 +878,6 @@
     grid-column: 1 / -1;
   }
 }
-.tm-guests {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 14px;
-  font-size: 14px;
-  color: var(--ink-soft);
-}
 .tm-ticket__total {
   display: flex;
   justify-content: space-between;
@@ -1398,5 +1395,30 @@
     animation-duration: 0.01ms !important;
     animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Touch devices — the controls a guest taps most, at the 44px touch minimum.
+   Pointer-scoped, so the desktop proportions are untouched.
+   ========================================================================== */
+@media (pointer: coarse) {
+  .tm-add {
+    height: 44px;
+    padding: 0 18px;
+  }
+  .tm-step {
+    height: 44px;
+  }
+  .tm-step button {
+    width: 44px;
+    height: 44px;
+  }
+  .tm-step--sm {
+    height: 40px;
+  }
+  .tm-step--sm button {
+    width: 40px;
+    height: 40px;
   }
 }

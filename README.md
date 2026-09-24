@@ -2,7 +2,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Table ordering & admin
 
-- **Guests** scan a table QR → `/t/<code>` (the landing page, with "Order now" going to that table) → `/t/<code>/menu` to order. Orders land in the admin instantly; guests can track status and ask for the bill, then pay at the counter.
+- **Guests** scan a table QR → `/t/<code>`, which opens `/t/<code>/menu` straight away. Orders land in the admin instantly; guests can track status and ask for the bill, then pay at the counter. Anyone who couldn't scan gets a table picker at `/`.
+- **The marketing landing page is parked, not deleted:** it lives in `landing/`, off the route tree, with `landing/README.md` explaining how to put it back at `/`.
 - **Admin** lives at `/admin`: Tables (live floor, table CRUD, QR codes), Analytics, Orders, Billing (POS), Coupons, Inventory. The first visit asks you to choose the admin password; or set `ADMIN_PASSWORD` in `.env.local` to fix it from the server.
 - **Billing a table** closes its tab and frees the table, so the next guests start fresh.
 - **QR address:** set Settings → "Public address for QR codes" to the address phones can reach (your domain, or this computer's Wi-Fi IP like `http://192.168.1.20:3000`) before printing QR cards.

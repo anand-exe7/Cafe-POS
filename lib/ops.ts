@@ -1,7 +1,8 @@
 import { ApiError, mutate, read } from "./store";
 import { code, uid } from "./seed";
 import { computeBill, round2 } from "./money";
-import type { AdminState, Bill, Coupon, DB, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, Session, Table, TableCard, TableClose, TableView } from "./types";
+import { hashPassword } from "./auth";
+import type { AdminState, Bill, Coupon, DB, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, Table, TableCard, TableClose, TableView } from "./types";
 
 /* Every read/write the app makes, with validation. Route handlers are thin wrappers. */
 
@@ -31,6 +32,10 @@ const find = <T extends { id: string }>(list: T[], id: unknown, what: string) =>
   if (!hit) throw new ApiError(`${what} not found — it may have just been removed.`, 404);
   return hit;
 };
+
+/** The fields of a user that may leave the server. Named one by one on purpose:
+    anything added to StaffUser later stays server-side until it is listed here. */
+const publicUser = (u: StaffUser): PublicUser => ({ id: u.id, name: u.name, mobile: u.mobile, email: u.email, createdAt: u.createdAt });
 
 function tableByCode(db: DB, c: string) {
   const t = db.tables.find((x) => x.code === String(c).toLowerCase());
@@ -103,12 +108,17 @@ export async function tableView(c: string) {
   return view(db, tableByCode(db, c));
 }
 
-/** The table directory the landing page offers to a guest who couldn't scan the QR. */
+/** The table directory the front door offers to a guest who couldn't scan the QR. */
 export async function tableList(): Promise<TableCard[]> {
   const db = await read();
   return db.tables
     .map((t) => ({ label: t.label, seats: t.seats, code: t.code }))
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+/** The shop's name, for pages that show it without loading a whole table. */
+export async function shopName(): Promise<string> {
+  return (await read()).settings.shopName;
 }
 
 /** Validates the lines, takes stock, opens a tab if needed and files the order. */
@@ -178,6 +188,7 @@ function addOrder(db: DB, t: Table, a: Args, opts: { fromCustomer: boolean }) {
     customerName: s.customerName,
     customerPhone: s.customerPhone,
     status: opts.fromCustomer ? "new" : "preparing",
+    source: opts.fromCustomer ? "customer" : "counter",
     subtotal: round2(items.reduce((x, i) => x + i.price * i.qty, 0)),
     createdAt: now,
     updatedAt: now,
@@ -208,8 +219,12 @@ export function requestBill(c: string) {
 
 export async function adminState(): Promise<AdminState> {
   const db = await read();
-  const { settings, ...rest } = db;
-  return { ...rest, settings: { shopName: settings.shopName, publicUrl: settings.publicUrl } };
+  const { settings, users, ...rest } = db;
+  return {
+    ...rest,
+    settings: { shopName: settings.shopName, publicUrl: settings.publicUrl },
+    users: users.map(publicUser),
+  };
 }
 
 function restock(db: DB, items: OrderItem[], sign: 1 | -1) {
@@ -393,6 +408,32 @@ export function adminOp(op: string, a: Args) {
         if (url && !/^https?:\/\/[^\s/]+/i.test(url)) throw new ApiError("Public URL should start with http:// or https://");
         db.settings.publicUrl = url;
         if (str(a.shopName, 60)) db.settings.shopName = str(a.shopName, 60);
+        return null;
+      }
+
+      /* ---------- users ---------- */
+      case "user.promote": {
+        const m = mobile(a.mobile);
+        if (!m) throw new ApiError("Enter a valid 10-digit mobile number.");
+        if (db.users.some((u) => u.mobile === m)) throw new ApiError("That number already has admin access.");
+        const password = typeof a.password === "string" ? a.password : "";
+        if (password.length < 6) throw new ApiError("Give them a password of at least 6 characters.");
+        const email = str(a.email, 120);
+        if (email && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) throw new ApiError("That email address doesn't look right.");
+        const u: StaffUser = {
+          id: uid(),
+          name: str(a.name, 60) || "Unknown",
+          mobile: m,
+          email,
+          passwordHash: hashPassword(password),
+          createdAt: now,
+        };
+        db.users.push(u);
+        return publicUser(u);
+      }
+      case "user.demote": {
+        const u = find(db.users, a.id, "User");
+        db.users = db.users.filter((x) => x.id !== u.id);
         return null;
       }
 
