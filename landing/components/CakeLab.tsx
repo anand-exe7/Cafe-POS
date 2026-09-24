@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { WhatsApp, Phone } from "./bits";
+import { WhatsApp, Phone } from "@/app/_components/bits";
 
 /* ============================================================
    CAKE LAB — build a cake, watch it assemble, send it to the chef

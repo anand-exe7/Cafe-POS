@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { Inter, Lexend } from "next/font/google";
+import { Lexend } from "next/font/google";
 import "./admin.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-adm" });
 const lexend = Lexend({ subsets: ["latin"], variable: "--font-adm-num" });
 
 export const metadata: Metadata = {
@@ -11,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function AdminLayout({ children }: LayoutProps<"/admin">) {
-  return <div className={`adm ${inter.variable} ${lexend.variable}`}>{children}</div>;
+  return <div className={`adm ${lexend.variable}`}>{children}</div>;
 }

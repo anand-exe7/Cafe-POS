@@ -55,6 +55,9 @@ export type OrderItem = {
 
 export type OrderStatus = "new" | "preparing" | "served" | "cancelled";
 
+/** Who put the order in: the guest's phone, or staff at the counter. */
+export type OrderSource = "customer" | "counter";
+
 export type Order = {
   id: string;
   no: number;
@@ -65,6 +68,7 @@ export type Order = {
   customerName: string;
   customerPhone: string;
   status: OrderStatus;
+  source: OrderSource;
   subtotal: number;
   createdAt: number;
   updatedAt: number;
@@ -116,6 +120,23 @@ export type Coupon = {
   createdAt: number;
 };
 
+/* Guests never hold an account — they order from a QR code and are known by the
+   mobile they leave with the order. So every stored user is someone who has been
+   given admin access, keyed by that same mobile, which is what lets a regular at
+   a table be promoted straight from the Users page. */
+export type StaffUser = {
+  id: string;
+  name: string;
+  /** 10-digit mobile: the identity this app actually collects */
+  mobile: string;
+  email: string;
+  passwordHash: string;
+  createdAt: number;
+};
+
+/** A user as the admin panel sees one — never the hash. */
+export type PublicUser = Omit<StaffUser, "passwordHash">;
+
 export type Settings = {
   shopName: string;
   /** origin printed into QR codes, e.g. https://order.cheflovingcakes.in */
@@ -134,11 +155,13 @@ export type DB = {
   orders: Order[];
   bills: Bill[];
   coupons: Coupon[];
+  users: StaffUser[];
 };
 
 /** What the admin panel receives (no secrets). */
-export type AdminState = Omit<DB, "settings"> & {
+export type AdminState = Omit<DB, "settings" | "users"> & {
   settings: { shopName: string; publicUrl: string };
+  users: PublicUser[];
 };
 
 /** One entry in the landing page's "pick your table" directory. */

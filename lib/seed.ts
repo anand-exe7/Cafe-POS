@@ -80,6 +80,7 @@ export function seed(): DB {
     sessions: [],
     orders: [],
     bills: [],
+    users: [],
     coupons: [
       { id: uid(), code: "KODAI10", percent: 10, minOrder: 500, expiresAt: null, limit: 100, used: 0, active: true, createdAt: now },
     ],

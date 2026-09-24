@@ -4,7 +4,7 @@ import HeroStage from "./HeroStage";
 import MenuIndex from "./MenuIndex";
 import CakeLab from "./CakeLab";
 import SliceWheel from "./SliceWheel";
-import { Split, Letters, Roll, Drip, Barcode, Cherry, Arrow, WhatsApp, Phone, Insta, Mail } from "./bits";
+import { Split, Letters, Roll, Drip, Barcode, Cherry, Arrow, WhatsApp, Phone, Insta, Mail } from "@/app/_components/bits";
 import type { TableCard } from "@/lib/types";
 
 type CSSVars = React.CSSProperties & Record<`--${string}`, string | number>;
