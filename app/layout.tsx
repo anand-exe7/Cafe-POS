@@ -21,8 +21,8 @@ const caveat = Caveat({
 
 export const metadata: Metadata = {
   title: "Chef Loving Cakes | Kodaikanal",
-  description:
-    "Chef Loving Cakes — a family-run bakery in Kodaikanal crafting handmade cakes for every celebration since 2015. Design your cake and order on WhatsApp.",
+  description: "Order to your table at Chef Loving Cakes — scan the QR card on your table, or pick your table here.",
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {

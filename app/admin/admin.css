@@ -1,30 +1,93 @@
 /* ==========================================================================
-   ADMIN — clean POS look (white cards, red accent). Layout is Tailwind;
-   this file holds fonts, a few primitives and print sheets.
+   ADMIN — the counter's side of the bakery: same cocoa · buttercream · cherry
+   as the guest menu, laid out as a POS. Layout is Tailwind; this file holds
+   the palette, fonts, a few primitives and the print sheets.
+
+   The panel is painted by re-pointing Tailwind's own colour variables inside
+   `.adm` rather than by rewriting class names: in Tailwind v4 every utility
+   resolves to `var(--color-*)`, so `bg-white` / `text-slate-900` / `bg-red-600`
+   across the admin pick these up with no markup changes and no extra work at
+   runtime. Slate becomes the cocoa-and-sand ramp, red becomes cherry, and
+   white becomes the warm card the guest menu sits items on.
    ========================================================================== */
 
+.adm {
+  /* neutrals: paper and cocoa, in place of Tailwind's cool grey */
+  --color-white: #fffdf7;
+  --color-slate-50: #f7f0e2;
+  --color-slate-100: #ece0c9;
+  --color-slate-200: #ddcaab;
+  --color-slate-300: #c4ab86;
+  --color-slate-400: #a28a68;
+  --color-slate-500: #857055;
+  --color-slate-600: #6b5344;
+  --color-slate-700: #54402f;
+  --color-slate-800: #3a2418;
+  --color-slate-900: #26170f;
+  --color-slate-950: #1c110c;
+
+  /* the accent is the cherry off the logo */
+  --color-red-50: #fdecee;
+  --color-red-100: #fbd9dd;
+  --color-red-200: #f5bcc3;
+  --color-red-300: #ee96a1;
+  --color-red-400: #e4606f;
+  --color-red-500: #dc3a4e;
+  --color-red-600: #d7263d;
+  --color-red-700: #a8182c;
+  --color-red-800: #8b1424;
+  --color-red-900: #6f111d;
+
+  /* caramel for anything that wants attention without alarm */
+  --color-amber-50: #fdf3e3;
+  --color-amber-100: #f8e3bf;
+  --color-amber-200: #f0cd91;
+  --color-amber-300: #e7b76a;
+  --color-amber-400: #e2a75c;
+  --color-amber-500: #cf8f3e;
+  --color-amber-600: #b0742c;
+  --color-amber-700: #8c5a22;
+  --color-amber-900: #4d3113;
+  --color-amber-950: #2e1d0b;
+
+  /* pistachio for the settled and the safe */
+  --color-emerald-50: #eef3e2;
+  --color-emerald-100: #dde7c6;
+  --color-emerald-200: #c7d7a4;
+  --color-emerald-500: #7d9c4a;
+  --color-emerald-600: #6b8f3a;
+  --color-emerald-700: #55722d;
+}
+
 html:has(.adm) {
-  background: #f5f6f8;
+  background: var(--paper);
   scroll-behavior: auto;
 }
 .adm {
   min-height: 100vh;
-  background: #f5f6f8;
-  color: #0f172a;
-  font-family: var(--font-adm), system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 .adm ::selection {
-  background: #dc2626;
-  color: #fff;
+  background: var(--cherry);
+  color: var(--cream);
 }
 .adm :focus-visible {
-  outline: 2px solid #dc2626;
+  outline: 2px solid var(--cherry);
   outline-offset: 2px;
 }
+/* page titles borrow the menu's serif, the way the guest side sets a heading */
+.adm-title {
+  font-family: var(--display);
+  font-weight: 500;
+  font-variation-settings: "SOFT" 100, "WONK" 1;
+  letter-spacing: -0.02em;
+}
 .adm-num {
-  font-family: var(--font-adm-num), var(--font-adm), system-ui, sans-serif;
+  font-family: var(--font-adm-num), var(--body), system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
@@ -38,10 +101,52 @@ html:has(.adm) {
 }
 .adm select {
   appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2326170f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 36px;
+}
+
+/* The panel is a column the height of the screen: the mobile top bar, then the
+   page, then the footer. The page takes the slack, which keeps the footer on the
+   bottom edge of a short screen and lets it scroll away normally on a long one.
+   dvh so a phone's collapsing address bar doesn't leave a strip below it. */
+.adm-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ---------- the cocoa band, same as the one the guest menu wears on top ---------- */
+.adm-side {
+  background: var(--cocoa);
+  color: var(--cream);
+}
+.adm-side__brand b {
+  color: var(--cream);
+}
+.adm-side__brand small {
+  color: rgba(245, 236, 220, 0.42);
+}
+.adm-side hr {
+  border: 0;
+  border-top: 1px solid var(--line-dark);
+}
+.adm-link {
+  color: rgba(245, 236, 220, 0.72);
+  transition: background-color 0.25s, color 0.25s;
+}
+.adm-link:hover {
+  background: rgba(245, 236, 220, 0.08);
+  color: var(--cream);
+}
+.adm-link.is-on {
+  background: var(--cherry);
+  color: #fff;
+}
+.adm-link.is-on:hover {
+  background: var(--cherry);
 }
 
 /* bars grow from the baseline once, then just resize */
@@ -118,7 +223,7 @@ html:has(.adm) {
 }
 .adm-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #e2e8f0 transparent;
+  scrollbar-color: var(--color-slate-200) transparent;
 }
 
 /* ---------- print ---------- */
@@ -169,7 +274,7 @@ html:has(.adm) {
 }
 .qr-card__table small {
   display: block;
-  font: 600 8pt/1.4 var(--font-adm), sans-serif;
+  font: 600 8pt/1.4 var(--body), sans-serif;
   letter-spacing: 0.3em;
   text-transform: uppercase;
 }
@@ -182,10 +287,10 @@ html:has(.adm) {
   display: block;
 }
 .qr-card__cta {
-  font: 600 11pt/1.3 var(--font-adm), sans-serif;
+  font: 600 11pt/1.3 var(--body), sans-serif;
 }
 .qr-card__url {
-  font: 400 7pt/1.2 var(--font-adm), sans-serif;
+  font: 400 7pt/1.2 var(--body), sans-serif;
   color: #555;
   word-break: break-all;
 }
@@ -199,7 +304,7 @@ html:has(.adm) {
 }
 .rcpt h1 {
   margin: 0;
-  font: 700 13pt/1.2 var(--font-adm), sans-serif;
+  font: 700 13pt/1.2 var(--body), sans-serif;
   text-align: center;
 }
 .rcpt .c {

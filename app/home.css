@@ -1,0 +1,196 @@
+/* ==========================================================================
+   FRONT DOOR (/) — the walk-in table picker
+   Same kitchen as the menu: cocoa · buttercream · cherry, Fraunces.
+   Entrances are pure CSS (transform/opacity), so there is no observer or
+   scroll handler on this page and nothing can be left stuck invisible.
+   ========================================================================== */
+
+.hm {
+  min-height: 100dvh;
+  box-sizing: border-box;
+  padding: clamp(28px, 6vw, 68px) clamp(18px, 5vw, 56px) clamp(56px, 8vw, 96px);
+  background: var(--cocoa);
+  background-image: var(--grain);
+  background-blend-mode: overlay;
+  color: var(--cream);
+}
+
+.hm__top {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: clamp(38px, 7vw, 76px);
+  animation: hm-drop 0.7s var(--ease-back) both;
+}
+.hm__top svg {
+  flex: none;
+}
+.hm__brand {
+  font: 400 clamp(17px, 2.1vw, 21px) / 1 var(--display);
+  letter-spacing: -0.01em;
+  font-variation-settings: "opsz" 40, "SOFT" 40;
+}
+
+.hm__t {
+  max-width: 14ch;
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(42px, 8.4vw, 96px);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  animation: hm-rise 0.9s var(--ease) 0.08s both;
+}
+.hm__t em {
+  display: block;
+  font-style: italic;
+  color: var(--caramel);
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+}
+
+.hm__sub {
+  max-width: 46ch;
+  margin: clamp(20px, 2.6vw, 30px) 0 clamp(34px, 5vw, 56px);
+  font-size: clamp(15px, 1.2vw, 18px);
+  line-height: 1.6;
+  color: rgba(245, 236, 220, 0.72);
+  animation: hm-rise 0.9s var(--ease) 0.2s both;
+}
+
+/* ---------- the tables ---------- */
+.hm__tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 252px), 1fr));
+  gap: clamp(14px, 1.5vw, 22px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hm__tables > li {
+  display: flex;
+  animation: hm-rise 0.8s var(--ease) calc(0.3s + var(--i, 0) * 60ms) both;
+}
+
+/* each table is a cloakroom ticket: cherry stub, perforation, tear-off half */
+.tkt {
+  --stub: 74px;
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  border-radius: 18px;
+  background: var(--cream);
+  color: var(--cocoa);
+  text-decoration: none;
+  box-shadow: 0 18px 34px -24px #000;
+  transition: transform 0.45s var(--ease-back), box-shadow 0.45s var(--ease);
+}
+/* the notches are punched in the page's own colour */
+.tkt::before,
+.tkt::after {
+  content: "";
+  position: absolute;
+  left: var(--stub);
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--cocoa);
+  translate: -50% 0;
+}
+.tkt::before {
+  top: -7px;
+}
+.tkt::after {
+  bottom: -7px;
+}
+.tkt:hover,
+.tkt:focus-visible {
+  transform: translateY(-6px);
+  box-shadow: 0 30px 46px -22px #000;
+}
+.tkt:active {
+  transform: translateY(-1px) scale(0.985);
+}
+
+.tkt__stub {
+  flex: 0 0 var(--stub);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  padding: 20px 6px;
+  border-radius: 18px 0 0 18px;
+  background: var(--cherry);
+  color: var(--cream);
+  line-height: 1;
+}
+.tkt__stub small {
+  font: 600 9.5px/1 var(--body);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+.tkt__stub b {
+  margin-top: 5px;
+  font: 400 clamp(28px, 2.6vw, 36px) / 1 var(--display);
+  letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 144, "SOFT" 40;
+}
+.tkt__body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 18px 16px 18px 18px;
+  border-left: 2px dashed rgba(215, 38, 61, 0.4);
+}
+.tkt__seats {
+  font: 600 10.5px/1 var(--body);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.tkt__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: italic 500 clamp(18px, 1.45vw, 22px) / 1.05 var(--display);
+  font-variation-settings: "SOFT" 100, "WONK" 1;
+  white-space: nowrap;
+}
+.tkt__go svg {
+  transition: translate 0.4s var(--ease);
+}
+.tkt:hover .tkt__go svg,
+.tkt:focus-visible .tkt__go svg {
+  translate: 7px 0;
+}
+
+.hm__note {
+  margin: clamp(26px, 3vw, 40px) 0 0;
+  font: 400 clamp(17px, 1.6vw, 21px) / 1.35 var(--hand);
+  color: var(--caramel);
+  rotate: -1.2deg;
+  transform-origin: left center;
+  animation: hm-rise 0.8s var(--ease) 0.5s both;
+}
+.hm__note--empty {
+  rotate: 0deg;
+  color: rgba(245, 236, 220, 0.72);
+  font-family: var(--body);
+  font-size: 16px;
+}
+
+@keyframes hm-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 26px, 0);
+  }
+}
+@keyframes hm-drop {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -14px, 0);
+  }
+}
