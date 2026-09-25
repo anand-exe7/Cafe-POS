@@ -30,23 +30,10 @@ const Cherry = () => (
 function Settings({ onClose }: { onClose: () => void }) {
   const { s, act, toast } = useAdmin();
   const [url, setUrl] = useState(s.settings.publicUrl);
-  const [cur, setCur] = useState("");
-  const [next, setNext] = useState("");
-  const [busy, setBusy] = useState(false);
 
   const saveUrl = async () => {
     const r = await act("settings.update", { publicUrl: url });
     if (r.ok) toast({ kind: "ok", title: "Saved. Re-print QR cards if the address changed." });
-  };
-  const changePw = async () => {
-    setBusy(true);
-    const r = await fetch("/api/admin/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: cur, next }) });
-    const d = await r.json().catch(() => ({}));
-    setBusy(false);
-    if (!r.ok) return toast({ kind: "err", title: d.error ?? "Couldn't change the password." });
-    setCur("");
-    setNext("");
-    toast({ kind: "ok", title: "Password changed. Other devices have been signed out." });
   };
 
   return (
@@ -58,20 +45,6 @@ function Settings({ onClose }: { onClose: () => void }) {
           </Field>
           <Btn kind="dark" className="mt-3" onClick={saveUrl}>
             Save address
-          </Btn>
-        </div>
-        <div className="border-t border-slate-100 pt-5">
-          <p className="mb-3 text-[13px] font-bold text-slate-800">Change admin password</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Current">
-              <input type="password" className={inputCls} value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" />
-            </Field>
-            <Field label="New (6+ characters)">
-              <input type="password" className={inputCls} value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
-            </Field>
-          </div>
-          <Btn kind="red" className="mt-3" disabled={!cur || next.length < 6 || busy} onClick={changePw}>
-            Change password
           </Btn>
         </div>
       </div>

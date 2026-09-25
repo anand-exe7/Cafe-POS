@@ -4,17 +4,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Btn, Field, inputCls } from "../_ui/kit";
 
-export default function LoginForm({ setup }: { setup: boolean }) {
+export default function LoginForm() {
   const router = useRouter();
   const [pw, setPw] = useState("");
-  const [pw2, setPw2] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr("");
-    if (setup && pw !== pw2) return setErr("The two passwords don't match.");
     setBusy(true);
     try {
       const r = await fetch("/api/admin/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
@@ -38,19 +36,12 @@ export default function LoginForm({ setup }: { setup: boolean }) {
           <circle cx="9" cy="22" r="6.5" fill="#d7263d" />
           <circle cx="23" cy="20" r="6.5" fill="#b81d33" />
         </svg>
-        <h1 className="adm-title mt-4 text-[32px] leading-none text-slate-900">{setup ? "Set up admin" : "Admin sign in"}</h1>
-        <p className="mt-1 text-[14px] text-slate-500">
-          {setup ? "First time here — choose the password your staff will use for this console." : "Chef Loving Cakes · tables, orders & billing"}
-        </p>
+        <h1 className="adm-title mt-4 text-[32px] leading-none text-slate-900">Admin sign in</h1>
+        <p className="mt-1 text-[14px] text-slate-500">Chef Loving Cakes · tables, orders &amp; billing</p>
         <div className="mt-6 space-y-4">
-          <Field label={setup ? "New password" : "Password"}>
-            <input type="password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={setup ? "new-password" : "current-password"} autoFocus required minLength={setup ? 6 : 1} />
+          <Field label="Password">
+            <input type="password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" autoFocus required minLength={1} />
           </Field>
-          {setup && (
-            <Field label="Repeat password">
-              <input type="password" className={inputCls} value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" required />
-            </Field>
-          )}
         </div>
         {err && (
           <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700" role="alert">
@@ -58,7 +49,7 @@ export default function LoginForm({ setup }: { setup: boolean }) {
           </p>
         )}
         <Btn type="submit" kind="red" size="lg" className="mt-6 w-full uppercase tracking-wide" disabled={busy || !pw}>
-          {busy ? "Please wait…" : setup ? "Create password & continue" : "Sign in"}
+          {busy ? "Please wait…" : "Sign in"}
         </Btn>
       </form>
     </main>
