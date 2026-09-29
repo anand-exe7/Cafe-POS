@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import type { DB, Product } from "./types";
+import type { Coupon, Product, Table } from "./types";
 
 /* First-run data: the café menu, a few tables and one example coupon.
    Everything here is editable from /admin. */
@@ -44,17 +44,12 @@ export const uid = (n = 10) => randomBytes(n).toString("base64url").replace(/[-_
 const ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const code = (n: number) => Array.from(randomBytes(n), (b) => ALPHA[b % ALPHA.length]).join("");
 
-export function seed(): DB {
+export function seedData(): { products: Product[]; tables: Table[]; coupons: Coupon[]; shopName: string } {
   const now = Date.now();
 
-  /* The seed's ids and table codes are fixed, not random. On a writable host the
-     seed is written once and never runs again, so it makes no difference there.
-     On a read-only host (Vercel) the DB lives in memory and every serverless
-     instance re-seeds independently — with random ids each instance would hand
-     out different table codes, so a link from a page one instance rendered would
-     404 on another. Fixed ids keep every instance's menu and QR codes identical,
-     so the app is navigable as a live demo. Records created at runtime still use
-     the random uid()/code() below. */
+  /* Fixed ids and table codes keep the menu and printed QR codes stable if the
+     database is ever re-seeded. Records created at runtime use the random
+     uid()/code() above. */
   const products: Product[] = MENU.map(([name, category, price, stock, img, description, eggless, tags = []], i) => ({
     id: `sp${i + 1}`,
     name,
@@ -81,15 +76,9 @@ export function seed(): DB {
   }));
 
   return {
-    version: 1,
-    seq: { order: 0 },
-    settings: { shopName: "Chef Loving Cakes", publicUrl: "", adminHash: null, secret: randomBytes(32).toString("hex") },
+    shopName: "Chef Loving Cakes",
     products,
     tables,
-    sessions: [],
-    orders: [],
-    bills: [],
-    users: [],
     coupons: [
       { id: "scoupon1", code: "KODAI10", percent: 10, minOrder: 500, expiresAt: null, limit: 100, used: 0, active: true, createdAt: now },
     ],

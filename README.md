@@ -4,10 +4,10 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 - **Guests** scan a table QR → `/t/<code>`, which opens `/t/<code>/menu` straight away. Orders land in the admin instantly; guests can track status and ask for the bill, then pay at the counter. Anyone who couldn't scan gets a table picker at `/`.
 - **The marketing landing page is parked, not deleted:** it lives in `landing/`, off the route tree, with `landing/README.md` explaining how to put it back at `/`.
-- **Admin** lives at `/admin`: Tables (live floor, table CRUD, QR codes), Analytics, Orders, Billing (POS), Coupons, Inventory. The first visit asks you to choose the admin password; or set `ADMIN_PASSWORD` in `.env.local` to fix it from the server.
+- **Admin** lives at `/admin`: Tables (live floor, table CRUD, QR codes), Analytics, Orders, Billing (POS), Coupons, Inventory. Sign in with `ADMIN_PASSWORD` (from the environment).
 - **Billing a table** closes its tab and frees the table, so the next guests start fresh.
 - **QR address:** set Settings → "Public address for QR codes" to the address phones can reach (your domain, or this computer's Wi-Fi IP like `http://192.168.1.20:3000`) before printing QR cards.
-- **Data** is stored in `data/db.json` (git-ignored; created with the menu, 6 tables and one sample coupon on first run). Run it on one always-on Node server (`npm run build && npm start`). Serverless hosts such as Vercel don't keep files between requests, so this store won't persist there; use a real database if you deploy to one.
+- **Data** lives in Supabase Postgres (Drizzle ORM); live updates use Supabase Realtime. Setup: create a Supabase project, copy `.env.example` to `.env.local` and fill it in, then run `npm run db:migrate` and `npm run db:seed` (menu, 6 tables, one sample coupon). On Vercel add the same variables — `DATABASE_URL` (transaction pooler), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ADMIN_PASSWORD`, `AUTH_SECRET` — and set the function region next to the database. Without the two `NEXT_PUBLIC_SUPABASE_*` values the app still works, refreshing on a slow timer instead of instantly.
 
 ## Getting Started
 

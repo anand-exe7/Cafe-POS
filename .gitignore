@@ -42,3 +42,5 @@ next-env.d.ts
 
 # table-ordering data (orders, bills, admin password hash)
 /data/
+
+!.env.example

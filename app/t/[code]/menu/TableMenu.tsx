@@ -1,5 +1,6 @@
 "use client";
 
+import { subscribeChanges } from "@/lib/realtime";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MenuItem, OrderStatus, TableClose, TableView } from "@/lib/types";
 import { rupee } from "@/lib/money";
@@ -118,6 +119,43 @@ function Stepper({ qty, onChange, max, size = "md", name }: { qty: number; onCha
   );
 }
 
+/* Pinned under the header for as long as the tab is open, so the state of the
+   kitchen is always in view — not only while the "Your tab" sheet is open. */
+function LiveStatus({ orders, onOpen }: { orders: NonNullable<TableView["tab"]>["orders"]; onOpen: () => void }) {
+  const live = orders.filter((o) => o.status === "new" || o.status === "preparing");
+  const served = orders.filter((o) => o.status === "served");
+  const lead = live[live.length - 1];
+  const at = lead ? STEPS.indexOf(lead.status) : 2;
+  let title: string;
+  let sub: string;
+  if (lead) {
+    title = `Order #${lead.no} · ${STEP_LABEL[lead.status]}`;
+    sub = live.length > 1 ? `+${live.length - 1} more in the kitchen` : lead.status === "new" ? "Sent to the kitchen" : "Being made fresh for you";
+  } else if (served.length) {
+    title = "All served — enjoy! ✺";
+    sub = "Tap to see your orders";
+  } else {
+    title = "Your order was cancelled";
+    sub = "Please ask our staff";
+  }
+  return (
+    <button type="button" className={`tm-live ${lead ? "" : "is-calm"}`} onClick={onOpen} aria-live="polite">
+      <span className="tm-live__t">
+        <b>{title}</b>
+        <small>{sub}</small>
+      </span>
+      {lead ? (
+        <span className="tm-live__steps" aria-hidden="true">
+          {STEPS.map((s, i) => (
+            <i key={s} className={i < at ? "is-done" : i === at ? "is-now" : ""} />
+          ))}
+        </span>
+      ) : null}
+      <em>Track</em>
+    </button>
+  );
+}
+
 export default function TableMenu({ initial }: { initial: TableView }) {
   const code = initial.table.code;
   const [view, setView] = useState(initial);
@@ -168,7 +206,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
       t = setTimeout(async () => {
         if (document.visibilityState === "visible") await refresh();
         tick();
-      }, cooking ? 5000 : 20000);
+      }, cooking ? 15000 : 60000);
     };
     tick();
     const onVis = () => document.visibilityState === "visible" && refresh();
@@ -178,6 +216,20 @@ export default function TableMenu({ initial }: { initial: TableView }) {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [cooking, refresh]);
+
+  /* Live signal: refresh when the shop reports a change. A short random delay
+     spreads the phones out so a busy moment doesn't hit the server all at once. */
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const off = subscribeChanges(() => {
+      clearTimeout(t);
+      t = setTimeout(() => document.visibilityState === "visible" && void refresh(), Math.random() * 1500);
+    });
+    return () => {
+      off();
+      clearTimeout(t);
+    };
+  }, [refresh]);
 
   /* ---------- this device's tab, and its ending ---------- */
   useEffect(() => {
@@ -395,6 +447,8 @@ export default function TableMenu({ initial }: { initial: TableView }) {
           </span>
         )}
       </header>
+
+      {tab && tab.orders.length > 0 && <LiveStatus orders={tab.orders} onOpen={() => setSheet("tab")} />}
 
       {/* ================= intro ================= */}
       <section className="tm-hero">

@@ -1,5 +1,6 @@
 "use client";
 
+import { subscribeChanges } from "@/lib/realtime";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminState, Order, Session, Table } from "@/lib/types";
@@ -157,7 +158,7 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
       t = setTimeout(async () => {
         await poll();
         loop();
-      }, document.visibilityState === "visible" ? 2500 : 10000);
+      }, document.visibilityState === "visible" ? 20000 : 60000);
     };
     loop();
     const onVis = () => document.visibilityState === "visible" && poll();
@@ -167,6 +168,10 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [poll]);
+
+  /* Live signal: the server nudges every open screen after each write, so a new
+     order shows up at once. The timer above is only the safety net. */
+  useEffect(() => subscribeChanges(() => void poll()), [poll]);
 
   const act = useCallback(
     async <T,>(op: string, args: Record<string, unknown> = {}): Promise<ActResult<T>> => {
