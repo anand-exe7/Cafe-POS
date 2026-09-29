@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { ApiError, mutate, read } from "./store";
 import { code, uid } from "./seed";
 import { computeBill, round2 } from "./money";
@@ -136,6 +136,14 @@ export function tableView(c: string) {
 export async function tableList(): Promise<TableCard[]> {
   const rows = await db.select({ label: tables.label, seats: tables.seats, code: tables.code }).from(tables);
   return rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+/** One bill plus the shop's name, for the printable invoice page. Accepts the bill id or invoice number. */
+export function billForInvoice(key: string): Promise<{ bill: Bill; shop: string } | null> {
+  return read(async (q) => {
+    const bill = await first(q.select().from(bills).where(or(eq(bills.id, key), eq(bills.invoiceNo, key))));
+    return bill ? { bill, shop: await shopNameOf(q) } : null;
+  });
 }
 
 /** The shop's name, for pages that show it without loading a whole table. */
@@ -571,6 +579,13 @@ export function adminOp(op: string, a: Args) {
         else stock = Math.max(0, (p.stock ?? 0) + int(a.delta, -99999, 99999, 0));
         const [u] = await tx.update(products).set({ stock, updatedAt: now }).where(eq(products.id, p.id)).returning();
         return u;
+      }
+      case "category.rename": {
+        const from = str(a.from, 40);
+        const to = str(a.to, 40);
+        if (!from || !to) throw new ApiError("Enter a category name.");
+        await tx.update(products).set({ category: to, updatedAt: now }).where(eq(products.category, from));
+        return { from, to };
       }
       case "product.toggle": {
         const p = await must(tx.select().from(products).where(eq(products.id, id)), "Product");

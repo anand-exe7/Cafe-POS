@@ -84,6 +84,10 @@ export default function InventoryPage() {
   const [filter, setFilter] = useState<StockFilter>("all");
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
+  const [catEdit, setCatEdit] = useState<{ mode: "new" | "rename"; name: string } | null>(null);
+  const [manageCats, setManageCats] = useState(false);
+  const [renameOf, setRenameOf] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState("");
 
   const cats = useMemo(() => Array.from(new Set(s.products.map((p) => p.category))), [s.products]);
   const low = s.products.filter((p) => p.stock !== null && p.stock > 0 && p.stock <= p.lowAt);
@@ -100,7 +104,11 @@ export default function InventoryPage() {
     return true;
   });
 
-  const open = (p?: Product) =>
+  const open = (p?: Product) => {
+    setCatEdit(null);
+    openForm(p);
+  };
+  const openForm = (p?: Product) =>
     setForm(
       p
         ? {
@@ -120,6 +128,26 @@ export default function InventoryPage() {
         : { ...EMPTY, category: cat !== "All" ? cat : cats[0] ?? "" },
     );
 
+  const applyCat = () => {
+    if (!catEdit || !form) return;
+    const name = catEdit.name.trim();
+    if (!name) return;
+    setForm({ ...form, category: name });
+    setCatEdit(null);
+  };
+
+  const renameCat = async (from: string) => {
+    const to = renaming.trim();
+    setRenaming("");
+    setRenameOf(null);
+    if (!to || to === from) return;
+    const r = await act("category.rename", { from, to });
+    if (r.ok) {
+      toast({ kind: "ok", title: `Renamed to ${to}` });
+      if (cat === from) setCat(to);
+    }
+  };
+
   const save = async () => {
     if (!form) return;
     setBusy(true);
@@ -137,9 +165,14 @@ export default function InventoryPage() {
         title="Inventory"
         sub="Only products that are on the menu show up for guests at the tables."
         right={
-          <Btn kind="red" icon="plus" onClick={() => open()}>
-            Add product
-          </Btn>
+          <span className="flex flex-wrap gap-2">
+            <Btn icon="edit" onClick={() => setManageCats(true)}>
+              Manage categories
+            </Btn>
+            <Btn kind="red" icon="plus" onClick={() => open()}>
+              Add product
+            </Btn>
+          </span>
         }
       />
 
@@ -246,6 +279,43 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      <Modal open={manageCats} onClose={() => setManageCats(false)} title="Manage categories" footer={<Btn onClick={() => setManageCats(false)}>Done</Btn>}>
+        <ul className="grid gap-2">
+          {cats.map((c) => (
+            <li key={c} className="flex items-center gap-3 rounded-xl border border-slate-100 px-4 py-2.5">
+              {renameOf === c ? (
+                <>
+                  <input className={inputCls} autoFocus value={renaming} maxLength={40} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => e.key === "Enter" && renameCat(c)} />
+                  <Btn size="sm" kind="red" disabled={!renaming.trim()} onClick={() => renameCat(c)}>
+                    Save
+                  </Btn>
+                  <Btn size="sm" onClick={() => setRenameOf(null)}>
+                    Cancel
+                  </Btn>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 font-semibold text-slate-800">{c}</span>
+                  <span className="text-[12px] text-slate-500">{s.products.filter((p) => p.category === c).length} items</span>
+                  <Btn
+                    size="sm"
+                    kind="plain"
+                    icon="edit"
+                    onClick={() => {
+                      setRenameOf(c);
+                      setRenaming(c);
+                    }}
+                  >
+                    Rename
+                  </Btn>
+                </>
+              )}
+            </li>
+          ))}
+          {!cats.length && <p className="text-[13px] text-slate-500">No categories yet — add a product to create one.</p>}
+        </ul>
+      </Modal>
+
       <Modal
         open={!!form}
         onClose={() => setForm(null)}
@@ -267,12 +337,31 @@ export default function InventoryPage() {
                 <input className={inputCls} value={form.name} maxLength={80} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Black Forest Slice" />
               </Field>
               <Field label="Category *">
-                <input className={inputCls} list="adm-cats" value={form.category} maxLength={40} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Cake Slices" />
-                <datalist id="adm-cats">
-                  {cats.map((c) => (
-                    <option key={c} value={c} />
+                <select className={inputCls} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                  {!form.category && <option value="">Select category…</option>}
+                  {(form.category && !cats.includes(form.category) ? [...cats, form.category] : cats).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
-                </datalist>
+                </select>
+                {catEdit ? (
+                  <div className="mt-2 flex gap-2">
+                    <input className={inputCls} autoFocus value={catEdit.name} maxLength={40} onChange={(e) => setCatEdit({ ...catEdit, name: e.target.value })} placeholder={catEdit.mode === "new" ? "New category name" : "Rename category"} />
+                    <Btn size="sm" kind="red" disabled={!catEdit.name.trim()} onClick={applyCat}>
+                      OK
+                    </Btn>
+                    <Btn size="sm" onClick={() => setCatEdit(null)}>
+                      Cancel
+                    </Btn>
+                  </div>
+                ) : (
+                  <div className="mt-1.5 flex gap-3 text-[12px] font-semibold text-sky-700">
+                    <button type="button" onClick={() => setCatEdit({ mode: "new", name: "" })}>
+                      + New
+                    </button>
+                  </div>
+                )}
               </Field>
               <Field label="Price (₹) *">
                 <input className={inputCls} type="number" min={0} step="0.5" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="140" />

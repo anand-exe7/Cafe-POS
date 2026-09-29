@@ -4,7 +4,10 @@ import { fmtDateTime } from "./kit";
 
 const PAY = { cash: "Cash", upi: "UPI", card: "Card" } as const;
 
-export function billText(b: Bill, shop: string) {
+/** Public link to the printable invoice page. */
+export const invoiceUrl = (b: Bill, publicUrl = "") => `${(publicUrl || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "")}/invoice/${b.id}`;
+
+export function billText(b: Bill, shop: string, publicUrl = "") {
   const L = [
     `*${shop}*`,
     `Invoice: ${b.invoiceNo}`,
@@ -21,9 +24,11 @@ export function billText(b: Bill, shop: string) {
     `*Grand total: ${rupee(b.total)}*`,
     `Paid by ${PAY[b.payment]}`,
     "",
+    `View your invoice: ${invoiceUrl(b, publicUrl)}`,
+    "",
     "Thank you for visiting — see you again soon!",
   ];
-  return L.filter((l, i) => l !== "" || i === L.length - 2).join("\n");
+  return L.filter((l, i) => l !== "" || i >= L.length - 4).join("\n");
 }
 
 export const waLink = (phone: string, text: string) => `https://wa.me/${phone.length === 10 ? `91${phone}` : phone}?text=${encodeURIComponent(text)}`;

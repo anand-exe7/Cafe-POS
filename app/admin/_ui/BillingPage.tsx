@@ -125,7 +125,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
       return;
     }
     const b = r.result;
-    if (w) w.location.href = waLink(b.customerPhone, billText(b, shop));
+    if (w) w.location.href = waLink(b.customerPhone, billText(b, shop, s.settings.publicUrl));
     if (via === "print") print(<Receipt b={b} shop={shop} />);
     setDone(b);
     reset();
@@ -252,57 +252,51 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
                 </Btn>
               </div>
             </div>
-            <div className="@container space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-              <div className="hidden grid-cols-[minmax(0,1fr)_104px_112px_120px_40px] gap-3 @2xl:grid">
-                <span className={lbl}>Item name / description</span>
-                <span />
-                <span className={lbl}>Price (₹)</span>
-                <span className={lbl}>Qty</span>
-              </div>
+            <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
               {lines.map((l) => (
-                <div key={l.key} className="grid grid-cols-[auto_minmax(0,1fr)_128px_48px] gap-3 border-b border-slate-200/70 pb-3 last:border-0 last:pb-0 @2xl:grid-cols-[minmax(0,1fr)_104px_112px_120px_40px] @2xl:items-start">
-                  <textarea
-                    rows={2}
-                    className="col-span-4 min-h-[60px] w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-[14px] outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50 @2xl:col-span-1"
-                    placeholder="Type custom product description…"
+                <div key={l.key} className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 pb-2 last:border-0 last:pb-0">
+                  <input
+                    className="h-10 min-w-[180px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                    placeholder="Item name / description…"
                     value={l.name}
                     onChange={(e) => setLine(l.key, { name: e.target.value })}
                   />
-                  <button type="button" onClick={() => setPicker(l.key)} className="flex h-[48px] items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 text-[13px] font-bold text-red-600 transition hover:bg-red-100">
-                    <Icon name="list" size={16} /> Catalog
+                  <button type="button" onClick={() => setPicker(l.key)} className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 text-[13px] font-bold text-red-600 transition hover:bg-red-100">
+                    <Icon name="list" size={15} /> Catalog
                   </button>
                   <input
                     type="number"
                     min={0}
                     step="0.5"
                     inputMode="decimal"
-                    className="h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                    className="h-10 w-24 rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                    placeholder="₹ Price"
                     value={l.price}
                     onChange={(e) => setLine(l.key, { price: e.target.value })}
                     aria-label="Price"
                   />
-                  <div className="flex h-[48px] items-center overflow-hidden rounded-xl border border-red-200 bg-white">
-                    <button type="button" className="h-full w-10 text-[18px] font-bold text-red-600 hover:bg-red-50" onClick={() => setLine(l.key, { qty: Math.max(1, l.qty - 1) })} aria-label="Less">
+                  <div className="flex h-10 w-[112px] items-center overflow-hidden rounded-xl border border-red-200 bg-white">
+                    <button type="button" className="h-full w-8 text-[16px] font-bold text-red-600 hover:bg-red-50" onClick={() => setLine(l.key, { qty: Math.max(1, l.qty - 1) })} aria-label="Less">
                       −
                     </button>
                     <input
-                      className="h-full w-full min-w-0 border-x border-red-100 text-center text-[15px] font-bold outline-none"
+                      className="h-full w-full min-w-0 border-x border-red-100 text-center text-[14px] font-bold outline-none"
                       value={l.qty}
                       inputMode="numeric"
                       onChange={(e) => setLine(l.key, { qty: Math.max(1, Math.min(999, parseInt(e.target.value.replace(/\D/g, "")) || 1)) })}
                       aria-label="Quantity"
                     />
-                    <button type="button" className="h-full w-10 text-[18px] font-bold text-red-600 hover:bg-red-50" onClick={() => setLine(l.key, { qty: Math.min(999, l.qty + 1) })} aria-label="More">
+                    <button type="button" className="h-full w-8 text-[16px] font-bold text-red-600 hover:bg-red-50" onClick={() => setLine(l.key, { qty: Math.min(999, l.qty + 1) })} aria-label="More">
                       +
                     </button>
                   </div>
                   <button
                     type="button"
                     onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [blank()]))}
-                    className="grid h-[48px] w-full place-items-center rounded-xl border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
+                    className="grid h-10 w-10 place-items-center rounded-xl border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
                     aria-label="Remove item"
                   >
-                    <Icon name="trash" size={17} />
+                    <Icon name="trash" size={16} />
                   </button>
                 </div>
               ))}
@@ -478,7 +472,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
           done && (
             <>
               {done.customerPhone && (
-                <a href={waLink(done.customerPhone, billText(done, shop))} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#22c55e] px-4 text-[13px] font-semibold text-white hover:bg-[#16a34a]">
+                <a href={waLink(done.customerPhone, billText(done, shop, s.settings.publicUrl))} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#22c55e] px-4 text-[13px] font-semibold text-white hover:bg-[#16a34a]">
                   <WaIcon size={16} /> WhatsApp
                 </a>
               )}
