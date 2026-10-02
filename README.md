@@ -1,45 +1,117 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Chef Loving — Cafe POS
 
-## Table ordering & admin
+A point-of-sale and table-ordering app for a cafe. Guests scan a QR code at their table and order from their phone; staff run the floor, billing, inventory and reports from an admin panel.
 
-- **Guests** scan a table QR → `/t/<code>`, which opens `/t/<code>/menu` straight away. Orders land in the admin instantly; guests can track status and ask for the bill, then pay at the counter. Anyone who couldn't scan gets a table picker at `/`.
-- **The marketing landing page is parked, not deleted:** it lives in `landing/`, off the route tree, with `landing/README.md` explaining how to put it back at `/`.
-- **Admin** lives at `/admin`: Tables (live floor, table CRUD, QR codes), Analytics, Orders, Billing (POS), Coupons, Inventory. Sign in with `ADMIN_PASSWORD` (from the environment).
-- **Billing a table** closes its tab and frees the table, so the next guests start fresh.
-- **QR address:** set Settings → "Public address for QR codes" to the address phones can reach (your domain, or this computer's Wi-Fi IP like `http://192.168.1.20:3000`) before printing QR cards.
-- **Data** lives in Supabase Postgres (Drizzle ORM); live updates use Supabase Realtime. Setup: create a Supabase project, copy `.env.example` to `.env.local` and fill it in, then run `npm run db:migrate` and `npm run db:seed` (menu, 6 tables, one sample coupon). On Vercel add the same variables — `DATABASE_URL` (transaction pooler), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ADMIN_PASSWORD`, `AUTH_SECRET` — and set the function region next to the database. Without the two `NEXT_PUBLIC_SUPABASE_*` values the app still works, refreshing on a slow timer instead of instantly.
+**Stack:** Next.js 16 (App Router, Turbopack) · React 19 · Tailwind CSS 4 · Postgres on Supabase · Drizzle ORM
 
-## Getting Started
+## What it does
 
-First, run the development server:
+### For guests — `/t/<code>`
+- Scan the table QR to open the menu. Orders reach the admin instantly.
+- Track order status, apply a coupon, and ask for the bill. Payment is at the counter.
+- Anyone who can't scan gets a table picker at `/`.
 
+### For staff — `/admin`
+Sign in with `ADMIN_PASSWORD`.
+
+| Screen | What you do there |
+| --- | --- |
+| **Tables** | Live floor view, add / rename / delete tables, rotate or print QR cards, clear or bill a tab. |
+| **Billing** | Bill a table tab or a walk-in counter sale. Customer name and phone, catalog or custom items, coupon, manual discount, extra charges, payment by **Cash / UPI / Card / Split**. |
+| **Orders** | All bills with filters and search. Each bill has **WhatsApp, View, Print, Delete**. Export to CSV. |
+| **Analytics** | Revenue, expenses and net earnings, order sources, top items, **payment-mode breakdown**, stock summary, customers, coupon performance. |
+| **Live queue** | Incoming orders for the kitchen: accept, serve, cancel. |
+| **Inventory** | Products, categories, prices, tracked stock, low-stock alerts, and **Stock in / out** with a note. |
+| **Stock movement** | Timeline of every stock change (added, removed, sold, cancelled, voided, adjusted) with filters and pagination. |
+| **Expenses** | Record and review expenses; they feed into Analytics. |
+| **Coupons / Users** | Create and manage discount codes; manage staff users. |
+
+### Saving a bill
+In Billing, **Save order** opens a modal with three choices:
+
+1. **Send to WhatsApp** — saves the bill and opens WhatsApp with the invoice text (needs a 10-digit mobile).
+2. **Print** — pick the printer and paper:
+   - Thermal printer: **2 inch roll** or **3 inch roll**
+   - Sheet printer: **A3**, **A4** or **A5**
+
+   The receipt or invoice resizes to match. Print from Orders uses the same picker.
+3. **Save bill** — saves without sending or printing.
+
+### Split payment
+Choose **Split** and enter the cash and card amounts. Typing one fills the other with the remainder, and it only saves when the two add up to the total. Each bill stores how much was paid in cash, UPI and card, so Analytics counts a split bill's cash part under Cash and its card part under Card.
+
+## Getting started
+
+### 1. Prerequisites
+- Node.js 20+
+- A [Supabase](https://supabase.com) project (free tier is fine)
+
+### 2. Install
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Configure
+Copy `.env.example` to `.env.local` and fill it in:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Supabase **transaction pooler** (port 6543). Used by the app. |
+| `DATABASE_URL_UNPOOLED` | Supabase **session pooler** (port 5432). Used by `db:migrate`. |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Live "something changed" signal. Optional — without them the admin refreshes on a slow timer instead. |
+| `ADMIN_PASSWORD` | Admin sign-in password. |
+| `AUTH_SECRET` | Session signing secret. Generate with `openssl rand -hex 32`. |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 4. Set up the database
+```bash
+npm run db:migrate   # create / update tables
+npm run db:seed      # sample menu, 6 tables, one coupon
+```
 
-## Learn More
+### 5. Run
+```bash
+npm run dev
+```
+Open `http://localhost:3000` (Next uses the next free port if 3000 is taken — check the terminal). Admin is at `/admin`.
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Dev server |
+| `npm run build` / `npm start` | Production build and server |
+| `npm run lint` | ESLint |
+| `npm run db:generate` | Generate a migration after editing `lib/db/schema.ts` |
+| `npm run db:migrate` | Apply pending migrations |
+| `npm run db:seed` | Load sample data |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Printing QR codes
+Set **Settings → "Public address for QR codes"** to an address phones can reach — your domain, or this computer's Wi-Fi IP such as `http://192.168.1.20:3000` — **before** printing QR cards. Cards print two per A4 page.
 
-## Deploy on Vercel
+## Project layout
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+app/
+  admin/            Admin panel (pages in (panel)/, UI in _ui/)
+  t/[code]/         Guest ordering flow
+  invoice/[id]/     Public, printable invoice page
+  api/              admin op/state/auth, stock-movements, table routes
+lib/
+  ops.ts            Every read/write, with validation
+  analytics.ts      Reporting maths (runs in the browser)
+  money.ts          Bill totals and coupon rules
+  db/schema.ts      Drizzle schema
+  store.ts          Serialized, all-or-nothing writes
+drizzle/            SQL migrations
+scripts/seed.ts     Sample data
+landing/            Parked marketing page (see landing/README.md)
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploying (Vercel)
+Add the same environment variables as above — `DATABASE_URL` (transaction pooler), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ADMIN_PASSWORD`, `AUTH_SECRET` — and set the function region next to your database. Run `npm run db:migrate` against the production database before the first deploy and after any schema change.
+
+## Notes
+- Billing a table closes its tab and frees the table, so the next guests start fresh.
+- Deleting a bill returns its items to stock and gives back any coupon use. Voiding keeps the bill on record but removes it from revenue.
+- The landing page is parked, not deleted: it lives in `landing/`, off the route tree.
+- This project targets a newer Next.js than most documentation covers. See `AGENTS.md` before changing framework-level code.
