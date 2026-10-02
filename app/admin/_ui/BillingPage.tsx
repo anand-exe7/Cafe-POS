@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { Bill, DiscountType, OrderItem, PayMethod } from "@/lib/types";
+import type { Bill, Coupon, DiscountType, OrderItem, PayMethod } from "@/lib/types";
 import { checkCoupon, computeBill, couponStatus, mergeItems, rupee } from "@/lib/money";
 import { useAdmin, type FloorTable } from "./Store";
 import Catalog from "./Catalog";
-import { Receipt, billText, waLink } from "./receipt";
+import PrintModal, { PrintFormats } from "./PrintModal";
+import { Receipt, billText, waLink, type PrintFormat } from "./receipt";
 import { Badge, Btn, Icon, Modal, WaIcon, cx, fmtTime, ago } from "./kit";
 
 type Line = { key: number; productId: string | null; name: string; price: string; qty: number };
@@ -45,12 +46,18 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
   const [name, setName] = useState(start?.session?.customerName ?? "");
   const [phone, setPhone] = useState(start?.session?.customerPhone ?? "");
   const [sig, setSig] = useState(start ? sigOf(start) : "");
-  const [coupon, setCoupon] = useState("");
+  const [coupon, setCoupon] = useState(start?.session?.couponCode ?? "");
+  const [newCp, setNewCp] = useState<{ code: string; percent: string; minOrder: string } | null>(null);
   const [mType, setMType] = useState<DiscountType>("amount");
   const [mVal, setMVal] = useState("");
   const [extra, setExtra] = useState("");
   const [pay, setPay] = useState<PayMethod>("cash");
   const [received, setReceived] = useState("");
+  const [splitCash, setSplitCash] = useState("");
+  const [splitCard, setSplitCard] = useState("");
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [printFor, setPrintFor] = useState<Bill | null>(null);
   const [picker, setPicker] = useState<number | null>(null);
   const [done, setDone] = useState<Bill | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,6 +78,8 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
     setExtra("");
     setPay("cash");
     setReceived("");
+    setSplitCash("");
+    setSplitCard("");
     if (!keepMode) setMode("counter");
   };
 
@@ -79,7 +88,19 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
     setLines(linesOf(x));
     setName(x.session?.customerName ?? "");
     setPhone(x.session?.customerPhone ?? "");
+    setCoupon(x.session?.couponCode ?? "");
     setSig(sigOf(x));
+  };
+
+  const createCoupon = async () => {
+    if (!newCp) return;
+    setBusy(true);
+    const r = await act<Coupon>("coupon.save", { code: newCp.code, percent: newCp.percent, minOrder: newCp.minOrder || 0, active: true });
+    setBusy(false);
+    if (r.ok) {
+      setCoupon(r.result.code);
+      setNewCp(null);
+    }
   };
 
   const setLine = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -93,16 +114,24 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
   const recv = Number(received) || 0;
   const change = pay === "cash" && recv > 0 ? recv - calc.total : 0;
 
+  /* typing one half of a split fills the other with whatever is left of the total */
+  const rest = (v: string) => (v === "" ? "" : String(Math.max(0, Math.round((calc.total - (Number(v) || 0)) * 100) / 100)));
+  const sCash = Number(splitCash) || 0;
+  const sCard = Number(splitCard) || 0;
+  const splitOff = Math.round((calc.total - sCash - sCard) * 100) / 100;
+
   const problems: string[] = [];
   if (mode === "table" && !f) problems.push("Pick a table with an open tab.");
   if (!items.length) problems.push("Add at least one item.");
   if (items.some((i) => !i.name)) problems.push("Every item needs a name.");
   if (cp && calc.couponOk && !calc.couponOk.ok) problems.push(`Coupon ${cp.code}: ${calc.couponOk.reason}.`);
   if (pay === "cash" && recv > 0 && recv < calc.total) problems.push("Amount received is less than the total.");
+  if (pay === "split" && (!(sCash > 0) || !(sCard > 0))) problems.push("Split payment: enter both the cash and the card amount.");
+  else if (pay === "split" && splitOff !== 0) problems.push(`Split payment: cash + card should equal ${rupee(calc.total)}.`);
   if (phone && !okPhone(phone)) problems.push("Mobile should be a 10-digit number.");
   const ready = !problems.length && !busy;
 
-  const complete = async (via: "wa" | "print" | "none") => {
+  const complete = async (via: "wa" | "print" | "none", fmt?: PrintFormat) => {
     if (!ready) return;
     const w = via === "wa" ? window.open("about:blank", "_blank") : null;
     setBusy(true);
@@ -118,6 +147,8 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
       extra,
       payment: pay,
       received,
+      cashAmount: splitCash,
+      cardAmount: splitCard,
     });
     setBusy(false);
     if (!r.ok) {
@@ -126,7 +157,9 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
     }
     const b = r.result;
     if (w) w.location.href = waLink(b.customerPhone, billText(b, shop, s.settings.publicUrl));
-    if (via === "print") print(<Receipt b={b} shop={shop} />);
+    if (via === "print") print(<Receipt b={b} shop={shop} fmt={fmt} />);
+    setSaveOpen(false);
+    setPrinting(false);
     setDone(b);
     reset();
   };
@@ -248,7 +281,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
                   Clear Order
                 </Btn>
                 <Btn size="md" kind="soft" className="text-[14px] font-bold" onClick={() => setLines((ls) => [...ls, blank()])}>
-                  + Add Custom Item
+                  + Add Item
                 </Btn>
               </div>
             </div>
@@ -346,7 +379,13 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
             )}
 
             <div className="border-t border-dashed border-slate-200 pt-5">
-              <span className={lbl}>Apply coupon</span>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Apply coupon</span>
+                <button type="button" className="text-[12px] font-extrabold text-red-600 hover:underline" onClick={() => setNewCp({ code: "", percent: "", minOrder: "" })}>
+                  + New coupon
+                </button>
+              </div>
+              {f?.session?.couponCode && f.session.couponCode === coupon && <p className="mb-2 text-[12px] font-semibold text-sky-600">Applied by the guest from their phone.</p>}
               <select className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-[14px] font-semibold text-slate-800 outline-none focus:border-red-400" value={coupon} onChange={(e) => setCoupon(e.target.value)}>
                 <option value="">No Coupon</option>
                 {couponOptions.map((c) => {
@@ -408,8 +447,8 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
               <div className="mb-3 flex items-center justify-between gap-2">
                 <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Payment</span>
                 <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-                  {(["cash", "upi", "card"] as const).map((p) => (
-                    <button key={p} type="button" onClick={() => setPay(p)} className={cx("h-8 rounded-lg px-3 text-[12px] font-bold uppercase transition", pay === p ? "bg-white text-slate-900 shadow" : "text-slate-500")}>
+                  {(["cash", "upi", "card", "split"] as const).map((p) => (
+                    <button key={p} type="button" onClick={() => setPay(p)} className={cx("h-8 rounded-lg px-2.5 text-[12px] font-bold uppercase transition", pay === p ? "bg-white text-slate-900 shadow" : "text-slate-500")}>
                       {p}
                     </button>
                   ))}
@@ -426,6 +465,26 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
                     </p>
                   )}
                 </>
+              ) : pay === "split" ? (
+                <div className="space-y-2">
+                  <p className="text-[12.5px] text-slate-500">Customer pays part in cash and part by card — enter how much of each.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label>
+                      <span className="mb-1 block text-[12px] font-bold text-slate-700">Cash (₹)</span>
+                      <input type="number" min={0} inputMode="decimal" placeholder="0.00" className="h-12 w-full rounded-xl border border-red-200 px-3 text-[16px] font-bold outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50" value={splitCash} onChange={(e) => (setSplitCash(e.target.value), setSplitCard(rest(e.target.value)))} />
+                    </label>
+                    <label>
+                      <span className="mb-1 block text-[12px] font-bold text-slate-700">Card (₹)</span>
+                      <input type="number" min={0} inputMode="decimal" placeholder="0.00" className="h-12 w-full rounded-xl border border-red-200 px-3 text-[16px] font-bold outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50" value={splitCard} onChange={(e) => (setSplitCard(e.target.value), setSplitCash(rest(e.target.value)))} />
+                    </label>
+                  </div>
+                  {(sCash > 0 || sCard > 0) && (
+                    <p className={cx("flex justify-between text-[13px] font-semibold", splitOff === 0 ? "text-emerald-600" : "text-red-600")}>
+                      <span>{splitOff === 0 ? "Adds up to the total" : splitOff > 0 ? "Still to collect" : "Over by"}</span>
+                      <span>{splitOff === 0 ? rupee(calc.total) : rupee(Math.abs(splitOff))}</span>
+                    </p>
+                  )}
+                </div>
               ) : (
                 <p className="text-[12.5px] text-slate-500">Collect {rupee(calc.total)} by {pay === "upi" ? "UPI" : "card"}, then complete the bill.</p>
               )}
@@ -434,23 +493,9 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
             {problems.length > 0 && (items.length > 0 || mode === "table") && <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">{problems[0]}</p>}
 
             <div className="space-y-2">
-              <button
-                type="button"
-                disabled={!ready || !okPhone(phone)}
-                onClick={() => complete("wa")}
-                title={!okPhone(phone) ? "Add the customer's 10-digit mobile to send on WhatsApp" : undefined}
-                className="flex h-14 w-full items-center justify-center gap-2.5 rounded-xl bg-[#22c55e] text-[15px] font-extrabold uppercase tracking-[0.06em] text-white shadow-[0_10px_22px_-12px_rgba(22,163,74,.9)] transition hover:bg-[#16a34a] active:scale-[.99] disabled:opacity-45"
-              >
-                <WaIcon size={20} /> Send bill via WhatsApp
-              </button>
-              <div className="grid grid-cols-2 gap-2">
-                <Btn size="lg" kind="dark" icon="print" disabled={!ready} onClick={() => complete("print")} className="uppercase">
-                  Save &amp; print
-                </Btn>
-                <Btn size="lg" disabled={!ready} onClick={() => complete("none")} className="uppercase">
-                  Save only
-                </Btn>
-              </div>
+              <Btn size="lg" kind="red" disabled={!ready} onClick={() => (setPrinting(false), setSaveOpen(true))} className="w-full uppercase">
+                Save order
+              </Btn>
               {mode === "table" && f && <p className="pt-1 text-center text-[11.5px] text-slate-400">Completing closes {f.table.label}&apos;s tab — the next guests start fresh.</p>}
             </div>
           </div>
@@ -464,6 +509,36 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
         onPick={(p) => picker !== null && setLine(picker, { productId: p.id, name: p.name, price: String(p.price) })}
       />
 
+      <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title={printing ? "Print — choose printer & paper" : "Save order"}>
+        {printing ? (
+          <div className="space-y-4">
+            <PrintFormats onPick={(fmt) => complete("print", fmt)} />
+            <Btn kind="plain" size="sm" onClick={() => setPrinting(false)}>
+              ← Back
+            </Btn>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="mb-1 text-[13px] text-slate-500">{rupee(calc.total)} · how do you want to finish this bill?</p>
+            <button
+              type="button"
+              disabled={!okPhone(phone) || busy}
+              onClick={() => complete("wa")}
+              className="flex h-14 w-full items-center gap-3 rounded-xl bg-[#22c55e] px-4 text-[15px] font-extrabold text-white transition hover:bg-[#16a34a] disabled:opacity-45"
+            >
+              <WaIcon size={20} /> Send to WhatsApp
+              {!okPhone(phone) && <span className="ml-auto text-[11px] font-semibold opacity-90">needs a 10-digit mobile</span>}
+            </button>
+            <Btn size="lg" kind="dark" icon="print" disabled={busy} onClick={() => setPrinting(true)} className="w-full justify-start">
+              Print
+            </Btn>
+            <Btn size="lg" disabled={busy} onClick={() => complete("none")} className="w-full justify-start">
+              Save bill
+            </Btn>
+          </div>
+        )}
+      </Modal>
+      <PrintModal bill={printFor} onClose={() => setPrintFor(null)} />
       <Modal
         open={!!done}
         onClose={() => setDone(null)}
@@ -476,7 +551,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
                   <WaIcon size={16} /> WhatsApp
                 </a>
               )}
-              <Btn icon="print" onClick={() => print(<Receipt b={done} shop={shop} />)}>
+              <Btn icon="print" onClick={() => setPrintFor(done)}>
                 Print receipt
               </Btn>
               <Btn kind="red" onClick={() => setDone(null)}>
@@ -497,6 +572,36 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
               {done.source === "table" ? `${done.tableLabel} is now free for the next guests.` : "Counter sale recorded."}
               {done.change > 0 && ` Give back ${rupee(done.change)} change.`}
             </p>
+          </div>
+        )}
+      </Modal>
+      <Modal
+        open={!!newCp}
+        onClose={() => setNewCp(null)}
+        title="New coupon"
+        footer={
+          <>
+            <Btn onClick={() => setNewCp(null)}>Cancel</Btn>
+            <Btn kind="red" onClick={createCoupon} disabled={busy || !newCp?.code || !newCp?.percent}>
+              Create &amp; apply
+            </Btn>
+          </>
+        }
+      >
+        {newCp && (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="sm:col-span-1">
+              <span className={lbl}>Code</span>
+              <input className={cx(big, "uppercase")} value={newCp.code} maxLength={24} placeholder="SUMMER20" onChange={(e) => setNewCp({ ...newCp, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })} />
+            </label>
+            <label>
+              <span className={lbl}>Discount %</span>
+              <input className={big} type="number" min={1} max={100} value={newCp.percent} onChange={(e) => setNewCp({ ...newCp, percent: e.target.value })} />
+            </label>
+            <label>
+              <span className={lbl}>Min order ₹</span>
+              <input className={big} type="number" min={0} value={newCp.minOrder} onChange={(e) => setNewCp({ ...newCp, minOrder: e.target.value })} />
+            </label>
           </div>
         )}
       </Modal>

@@ -2,7 +2,7 @@ import type { Bill } from "@/lib/types";
 import { rupee } from "@/lib/money";
 import { fmtDateTime } from "./kit";
 
-const PAY = { cash: "Cash", upi: "UPI", card: "Card" } as const;
+const PAY = { cash: "Cash", upi: "UPI", card: "Card", split: "Cash + Card" } as const;
 
 /** Public link to the printable invoice page. */
 export const invoiceUrl = (b: Bill, publicUrl = "") => `${(publicUrl || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "")}/invoice/${b.id}`;
@@ -23,6 +23,7 @@ export function billText(b: Bill, shop: string, publicUrl = "") {
     b.extra ? `Extra charges: ${rupee(b.extra)}` : "",
     `*Grand total: ${rupee(b.total)}*`,
     `Paid by ${PAY[b.payment]}`,
+    b.payment === "split" ? `  Cash ${rupee(b.cashAmount)} · Card ${rupee(b.cardAmount)}` : "",
     "",
     `View your invoice: ${invoiceUrl(b, publicUrl)}`,
     "",
@@ -33,12 +34,153 @@ export function billText(b: Bill, shop: string, publicUrl = "") {
 
 export const waLink = (phone: string, text: string) => `https://wa.me/${phone.length === 10 ? `91${phone}` : phone}?text=${encodeURIComponent(text)}`;
 
-/** 80mm thermal receipt, rendered into the print area. */
-export function Receipt({ b, shop }: { b: Bill; shop: string }) {
+/* ---------- print formats ---------- */
+/** Thermal rolls are named by width (2" ≈ 58mm paper, 3" ≈ 80mm paper); sheets by paper size. */
+export type PrintFormat = { kind: "thermal"; roll: 2 | 3 } | { kind: "sheet"; size: "A3" | "A4" | "A5" };
+
+export const THERMAL_ROLLS = [2, 3] as const;
+export const SHEET_SIZES = ["A3", "A4", "A5"] as const;
+export const DEFAULT_FORMAT: PrintFormat = { kind: "thermal", roll: 3 };
+
+/* [paper width, printable width] in mm — the printable strip is narrower than the
+   roll so nothing is clipped by the printer's own margins. */
+const ROLL_MM = { 2: [58, 48], 3: [80, 72] } as const;
+
+const pageCss = (f: PrintFormat) =>
+  f.kind === "thermal"
+    ? `@page{size:${ROLL_MM[f.roll][0]}mm 297mm;margin:2mm 0}`
+    : `@page{size:${f.size};margin:${f.size === "A3" ? 16 : f.size === "A4" ? 12 : 8}mm}`;
+
+const ADDRESS = "Observatory Rd, Kodaikanal 624101 · +91 80568 95352";
+
+/** Receipt for the chosen printer, rendered into the print area. */
+export function Receipt({ b, shop, fmt = DEFAULT_FORMAT }: { b: Bill; shop: string; fmt?: PrintFormat }) {
   return (
-    <div className="rcpt">
+    <>
+      <style>{pageCss(fmt)}</style>
+      {fmt.kind === "thermal" ? <Thermal b={b} shop={shop} roll={fmt.roll} /> : <Sheet b={b} shop={shop} size={fmt.size} />}
+    </>
+  );
+}
+
+/** Full-page invoice for A3 / A4 / A5 — one layout, scaled by the paper size. */
+function Sheet({ b, shop, size }: { b: Bill; shop: string; size: "A3" | "A4" | "A5" }) {
+  return (
+    <div className={`inv inv--${size.toLowerCase()}`}>
+      <header className="inv__head">
+        <div>
+          <h1>{shop}</h1>
+          <p>{ADDRESS}</p>
+        </div>
+        <div className="inv__meta">
+          <h2>INVOICE</h2>
+          <p>
+            <b>{b.invoiceNo}</b>
+          </p>
+          <p>{fmtDateTime(b.createdAt)}</p>
+        </div>
+      </header>
+
+      <section className="inv__to">
+        <div>
+          <span>Billed to</span>
+          <b>{b.customerName || "Walk-in customer"}</b>
+          {b.customerPhone && <p>{b.customerPhone}</p>}
+        </div>
+        <div className="inv__r">
+          <span>{b.source === "table" ? "Table" : "Counter"}</span>
+          <b>{b.source === "table" ? b.tableLabel : "Walk-in"}</b>
+          <p>Paid by {PAY[b.payment]}</p>
+        </div>
+      </section>
+
+      <table className="inv__tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Item</th>
+            <th className="n">Qty</th>
+            <th className="n">Rate</th>
+            <th className="n">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {b.items.map((i, k) => (
+            <tr key={k}>
+              <td>{k + 1}</td>
+              <td>{i.name}</td>
+              <td className="n">{i.qty}</td>
+              <td className="n">{rupee(i.price)}</td>
+              <td className="n">{rupee(i.qty * i.price)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <dl className="inv__sum">
+        <div>
+          <dt>Subtotal ({b.itemCount} items)</dt>
+          <dd>{rupee(b.subtotal)}</dd>
+        </div>
+        {b.couponDiscount > 0 && (
+          <div>
+            <dt>
+              Coupon {b.couponCode} ({b.couponPercent}%)
+            </dt>
+            <dd>-{rupee(b.couponDiscount)}</dd>
+          </div>
+        )}
+        {b.manualDiscount > 0 && (
+          <div>
+            <dt>Discount</dt>
+            <dd>-{rupee(b.manualDiscount)}</dd>
+          </div>
+        )}
+        {b.extra > 0 && (
+          <div>
+            <dt>Extra charges</dt>
+            <dd>{rupee(b.extra)}</dd>
+          </div>
+        )}
+        <div className="inv__tot">
+          <dt>Grand total</dt>
+          <dd>{rupee(b.total)}</dd>
+        </div>
+        {b.payment === "split" ? (
+          <>
+            <div>
+              <dt>Received · Cash</dt>
+              <dd>{rupee(b.cashAmount)}</dd>
+            </div>
+            <div>
+              <dt>Received · Card</dt>
+              <dd>{rupee(b.cardAmount)}</dd>
+            </div>
+          </>
+        ) : (
+          <div>
+            <dt>Received · {PAY[b.payment]}</dt>
+            <dd>{rupee(b.received)}</dd>
+          </div>
+        )}
+        {b.change > 0 && (
+          <div>
+            <dt>Change</dt>
+            <dd>{rupee(b.change)}</dd>
+          </div>
+        )}
+      </dl>
+
+      <footer className="inv__foot">Thank you for visiting — see you again soon!</footer>
+    </div>
+  );
+}
+
+function Thermal({ b, shop, roll }: { b: Bill; shop: string; roll: 2 | 3 }) {
+  return (
+    <div className={`rcpt rcpt--${roll}`} style={{ width: `${ROLL_MM[roll][1]}mm` }}>
       <h1>{shop}</h1>
-      <p className="c">Observatory Rd, Kodaikanal 624101 · +91 80568 95352</p>
+      <p className="c">{ADDRESS}</p>
       <hr />
       <div className="row">
         <span>{b.invoiceNo}</span>
@@ -88,10 +230,23 @@ export function Receipt({ b, shop }: { b: Bill; shop: string }) {
         <span>TOTAL</span>
         <span>{rupee(b.total)}</span>
       </div>
-      <div className="row">
-        <span>Paid · {PAY[b.payment]}</span>
-        <span>{rupee(b.received)}</span>
-      </div>
+      {b.payment === "split" ? (
+        <>
+          <div className="row">
+            <span>Paid · Cash</span>
+            <span>{rupee(b.cashAmount)}</span>
+          </div>
+          <div className="row">
+            <span>Paid · Card</span>
+            <span>{rupee(b.cardAmount)}</span>
+          </div>
+        </>
+      ) : (
+        <div className="row">
+          <span>Paid · {PAY[b.payment]}</span>
+          <span>{rupee(b.received)}</span>
+        </div>
+      )}
       {b.change > 0 && (
         <div className="row">
           <span>Change</span>

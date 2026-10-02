@@ -156,6 +156,57 @@ function LiveStatus({ orders, onOpen }: { orders: NonNullable<TableView["tab"]>[
   );
 }
 
+/* Coupon entry for the open tab. The discount is a preview — the counter
+   re-checks the code when the bill is made. */
+function CouponBox({ tab, code, onView }: { tab: NonNullable<TableView["tab"]>; code: string; onView: (v: TableView) => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const send = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await fetch(`/api/table/${code}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await r.json();
+      if (!r.ok) return setMsg(data.error || "Couldn't apply that coupon.");
+      onView(data.view);
+      setText("");
+    } catch {
+      setMsg("You seem to be offline. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const c = tab.coupon;
+  if (c)
+    return (
+      <div className="tm-coupon is-on">
+        <div>
+          <b>{c.code}</b>
+          <small>{c.ok ? `${c.percent}% off — saves ${rupee(c.discount)}` : `Not applying right now: ${c.reason}`}</small>
+        </div>
+        <button type="button" disabled={busy} onClick={() => send({ action: "coupon.remove" })}>
+          Remove
+        </button>
+      </div>
+    );
+  return (
+    <form
+      className="tm-coupon"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (text.trim()) send({ action: "coupon", code: text });
+      }}
+    >
+      <input value={text} onChange={(e) => setText(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} placeholder="Have a coupon code?" maxLength={24} aria-label="Coupon code" />
+      <button type="submit" disabled={busy || !text.trim()}>
+        {busy ? "…" : "Apply"}
+      </button>
+      {msg && <p role="alert">{msg}</p>}
+    </form>
+  );
+}
+
 export default function TableMenu({ initial }: { initial: TableView }) {
   const code = initial.table.code;
   const [view, setView] = useState(initial);
@@ -683,6 +734,13 @@ export default function TableMenu({ initial }: { initial: TableView }) {
                 );
               })}
             </ol>
+            <CouponBox tab={tab} code={code} onView={setView} />
+            {tab.coupon?.ok && (
+              <div className="tm-tab__pay">
+                <span>To pay after coupon</span>
+                <b>{rupee(tab.payable)}</b>
+              </div>
+            )}
             <button type="button" className="tm-send" onClick={() => { setSheet(null); setFinish(true); }}>
               {tab.billRequested ? "See your bill" : "Finished eating? Wrap up"}
               <Arrow size={18} />
@@ -733,11 +791,18 @@ export default function TableMenu({ initial }: { initial: TableView }) {
                   </li>
                 ))}
               </ul>
+              {tab.coupon?.ok && (
+                <div className="tm-rcpt__disc">
+                  <span>Coupon {tab.coupon.code}</span>
+                  <b>-{rupee(tab.coupon.discount)}</b>
+                </div>
+              )}
               <div className="tm-rcpt__total">
-                <span>Total</span>
-                <b>{rupee(tab.total)}</b>
+                <span>{tab.coupon?.ok ? "To pay" : "Total"}</span>
+                <b>{rupee(tab.payable)}</b>
               </div>
-              <p className="tm-rcpt__fine">Any coupon or discount is applied at the counter.</p>
+              {!tab.billRequested && <CouponBox tab={tab} code={code} onView={setView} />}
+              <p className="tm-rcpt__fine">Any other discount is applied at the counter.</p>
             </div>
 
             {tab.billRequested ? (

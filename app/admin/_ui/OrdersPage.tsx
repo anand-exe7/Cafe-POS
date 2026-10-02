@@ -6,12 +6,13 @@ import type { Bill } from "@/lib/types";
 import { rupee } from "@/lib/money";
 import { inRange, rangeOf, type Period } from "@/lib/analytics";
 import { useAdmin } from "./Store";
-import { Receipt, billText, waLink } from "./receipt";
+import { billText, waLink } from "./receipt";
+import PrintModal from "./PrintModal";
 import { Badge, Btn, Empty, Icon, Modal, Page, PageHead, SearchBox, Tabs, WaIcon, csv, cx, downloadText, fmtDate, fmtDateTime, fmtTime } from "./kit";
 
 type DateF = Extract<Period, "today" | "week" | "month" | "custom"> | "any";
 
-const PAY = { cash: "Cash", upi: "UPI", card: "Card" } as const;
+const PAY = { cash: "Cash", upi: "UPI", card: "Card", split: "Cash + Card" } as const;
 
 const th = "px-3 py-4 text-left text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-500 whitespace-nowrap";
 const td = "px-3 py-4 text-[13px] whitespace-nowrap";
@@ -35,7 +36,7 @@ function Chip({ on, children, onClick, tone = "red" }: { on: boolean; children: 
 }
 
 export default function OrdersPage() {
-  const { s, act, confirm, print } = useAdmin();
+  const { s, act, confirm } = useAdmin();
   const [type, setType] = useState<"all" | "table" | "counter">("all");
   const [date, setDate] = useState<DateF>("any");
   const [from, setFrom] = useState("");
@@ -43,6 +44,18 @@ export default function OrdersPage() {
   const [q, setQ] = useState("");
   const [limit, setLimit] = useState(50);
   const [bill, setBill] = useState<Bill | null>(null);
+  const [printFor, setPrintFor] = useState<Bill | null>(null);
+
+  const remove = async (b: Bill) => {
+    const body =
+      b.status === "completed"
+        ? "It is removed from Orders and Analytics for good. Its items go back into stock and any coupon use is given back. This can't be undone."
+        : "This voided bill is removed from your records for good. This can't be undone.";
+    if (await confirm({ title: `Delete ${b.invoiceNo}?`, body, ok: "Delete bill", danger: true })) {
+      const r = await act("bill.delete", { id: b.id });
+      if (r.ok && bill?.id === b.id) setBill(null);
+    }
+  };
 
   const range = date === "any" ? null : rangeOf(date, from, to);
   const needle = q.trim().toLowerCase();
@@ -60,8 +73,8 @@ export default function OrdersPage() {
       downloadText(
         `bills-${new Date().toISOString().slice(0, 10)}.csv`,
         csv([
-          ["Invoice", "Type", "Table", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Total", "Payment", "Status", "Date", "Time"],
-          ...bills.map((b) => [b.invoiceNo, b.source, b.tableLabel, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.total, b.payment, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
+          ["Invoice", "Type", "Table", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
+          ...bills.map((b) => [b.invoiceNo, b.source, b.tableLabel, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.total, b.payment, b.cashAmount, b.upiAmount, b.cardAmount, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
         ]),
       );
   };
@@ -135,26 +148,22 @@ export default function OrdersPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)]">
         <div className="overflow-x-auto adm-scroll">
-            <table className="w-full min-w-[1000px]">
+            <table className="w-full min-w-[820px]">
               <thead>
                 <tr className="border-b border-slate-100">
                   <th className={th}>Invoice no</th>
                   <th className={th}>Customer name</th>
-                  <th className={th}>Phone</th>
                   <th className={th}>Bill type</th>
-                  <th className={th}>Items</th>
-                  <th className={th}>Coupon</th>
-                  <th className={th}>Discount</th>
-                  <th className={th}>Extra</th>
                   <th className={th}>Total</th>
                   <th className={th}>Payment</th>
                   <th className={th}>Date</th>
                   <th className={cx(th, "text-center")}>Status</th>
+                  <th className={cx(th, "text-right")}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {bills.slice(0, limit).map((b) => (
-                  <tr key={b.id} onClick={() => setBill(b)} className={cx("cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50/60", b.status === "void" && "opacity-55")}>
+                  <tr key={b.id} className={cx("border-b border-slate-100 transition-colors hover:bg-slate-50/60", b.status === "void" && "opacity-55")}>
                     <td className={td}>
                       <button type="button" onClick={() => setBill(b)} className="inline-flex items-center gap-2 font-bold text-red-600">
                         {b.invoiceNo}
@@ -164,18 +173,29 @@ export default function OrdersPage() {
                       </button>
                     </td>
                     <td className={cx(td, "font-semibold text-slate-800")}>{b.customerName || "—"}</td>
-                    <td className={cx(td, "text-slate-600")}>{b.customerPhone || "—"}</td>
                     <td className={td}>{b.source === "table" ? <Badge tone="orange">Table {b.tableLabel}</Badge> : <Badge tone="sky">Counter</Badge>}</td>
-                    <td className={cx(td, "max-w-[240px] truncate text-slate-600")} title={b.items.map((i) => `${i.qty}× ${i.name}`).join(", ")}>
-                      <b className="text-slate-800">{b.itemCount}</b> · {b.items.map((i) => `${i.qty}× ${i.name}`).join(", ")}
-                    </td>
-                    <td className={cx(td, "text-slate-600")}>{b.couponCode ?? "—"}</td>
-                    <td className={cx(td, "text-slate-500")}>{b.discount ? rupee(b.discount) : "—"}</td>
-                    <td className={cx(td, "text-slate-500")}>{b.extra ? rupee(b.extra) : "—"}</td>
                     <td className={cx(td, "font-bold text-slate-900")}>{rupee(b.total)}</td>
                     <td className={cx(td, "text-slate-600")}>{PAY[b.payment]}</td>
                     <td className={cx(td, "text-slate-600")}>{fmtDate(b.createdAt)}</td>
                     <td className={cx(td, "text-center")}>{b.status === "completed" ? <Badge tone="green">Completed</Badge> : <Badge tone="slate">Void</Badge>}</td>
+                    <td className={cx(td, "text-right")}>
+                      <span className="inline-flex gap-1.5">
+                        {b.customerPhone && (
+                          <a href={waLink(b.customerPhone, billText(b, s.settings.shopName, s.settings.publicUrl))} target="_blank" rel="noopener noreferrer" title="Send on WhatsApp" aria-label="Send on WhatsApp" className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-50 text-[#22c55e] hover:bg-emerald-100">
+                            <WaIcon size={18} />
+                          </a>
+                        )}
+                        <button type="button" title="View details" aria-label="View details" onClick={() => setBill(b)} className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200">
+                          <Icon name="eye" size={16} />
+                        </button>
+                        <button type="button" title="Print receipt" aria-label="Print receipt" onClick={() => setPrintFor(b)} className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200">
+                          <Icon name="print" size={16} />
+                        </button>
+                        <button type="button" title="Delete bill" aria-label="Delete bill" onClick={() => remove(b)} className="grid h-9 w-9 place-items-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100">
+                          <Icon name="trash" size={16} />
+                        </button>
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -192,6 +212,8 @@ export default function OrdersPage() {
           <Btn onClick={() => setLimit((n) => n + 50)}>Show more ({count - limit} left)</Btn>
         </div>
       )}
+
+      <PrintModal bill={printFor} onClose={() => setPrintFor(null)} />
 
       {/* ---------- bill detail ---------- */}
       <Modal
@@ -223,7 +245,7 @@ export default function OrdersPage() {
               <a href={`/invoice/${bill.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center rounded-xl border border-slate-200 px-4 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
                 View invoice
               </a>
-              <Btn kind="dark" icon="print" onClick={() => print(<Receipt b={bill} shop={s.settings.shopName} />)}>
+              <Btn kind="dark" icon="print" onClick={() => setPrintFor(bill)}>
                 Print
               </Btn>
             </>

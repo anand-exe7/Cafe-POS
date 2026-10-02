@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { body, handle } from "@/lib/http";
-import { placeOrder, requestBill, tableView } from "@/lib/ops";
+import { applyCoupon, placeOrder, removeCoupon, requestBill, tableView } from "@/lib/ops";
 import { ApiError } from "@/lib/store";
 
 /* Customer endpoints, addressed by the table's QR code. */
@@ -16,6 +16,8 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/table/[code
     const b = await body(req);
     if (b.action === "order") return placeOrder(code, b);
     if (b.action === "bill") return requestBill(code);
+    if (b.action === "coupon") return applyCoupon(code, b.code);
+    if (b.action === "coupon.remove") return removeCoupon(code);
     throw new ApiError("Unknown action.");
   });
 }

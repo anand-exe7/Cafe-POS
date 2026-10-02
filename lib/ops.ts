@@ -1,11 +1,11 @@
 import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { ApiError, mutate, read } from "./store";
 import { code, uid } from "./seed";
-import { computeBill, round2 } from "./money";
+import { checkCoupon, computeBill, round2, shopToday } from "./money";
 import { hashPassword } from "./auth";
 import { db, type Db, type Tx } from "./db";
-import { bills, coupons, meta, orders, products, sessions, settings, staffUsers, tables } from "./db/schema";
-import type { AdminState, Bill, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, Table, TableCard, TableClose, TableView } from "./types";
+import { bills, coupons, expenses, meta, orders, products, sessions, settings, staffUsers, stockMovements, tables } from "./db/schema";
+import type { AdminState, Bill, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, StockMoveType, Table, TableCard, TableClose, TableView } from "./types";
 
 /* Every read/write the app makes, with validation. Route handlers are thin wrappers.
    Writes run inside store.mutate(), which serializes them and rolls back on error. */
@@ -99,14 +99,20 @@ async function lastClose(q: Q, t: Table): Promise<TableClose | null> {
    hops: the table, then everything else at once. */
 async function view(q: Q, t: Table): Promise<TableView> {
   const sid = t.sessionId;
-  const [all, name, s, list, closed] = await Promise.all([
+  const [all, name, s, list, closed, cps] = await Promise.all([
     q.select().from(products).orderBy(asc(products.createdAt), asc(products.id)),
     shopNameOf(q),
     sid ? first(q.select().from(sessions).where(and(eq(sessions.id, sid), eq(sessions.status, "open")))) : Promise.resolve(null),
     sid ? q.select().from(orders).where(eq(orders.sessionId, sid)).orderBy(asc(orders.createdAt), asc(orders.no)) : Promise.resolve([] as Order[]),
     sid ? Promise.resolve(null) : lastClose(q, t),
+    sid ? q.select().from(coupons) : Promise.resolve([]),
   ]);
   const open = s ? list : [];
+  const live = open.filter((o) => o.status !== "cancelled");
+  const total = round2(live.reduce((a, o) => a + o.subtotal, 0));
+  const cp = s?.couponCode ? cps.find((c) => c.code === s.couponCode) ?? null : null;
+  const check = cp ? checkCoupon(cp, total) : null;
+  const discount = cp && check?.ok ? computeBill({ items: live.flatMap((o) => o.items), coupon: cp, manualType: "amount", manualValue: 0, extra: 0 }).couponDiscount : 0;
   return {
     table: { label: t.label, seats: t.seats, code: t.code },
     shopName: name,
@@ -115,10 +121,12 @@ async function view(q: Q, t: Table): Promise<TableView> {
     tab: s
       ? {
           orders: open.map((o) => ({ no: o.no, items: o.items, status: o.status, subtotal: o.subtotal, createdAt: o.createdAt })),
-          total: round2(open.filter((o) => o.status !== "cancelled").reduce((a, o) => a + o.subtotal, 0)),
+          total,
           billRequested: !!s.billRequestedAt,
           name: s.customerName,
           hasPhone: !!s.customerPhone,
+          coupon: cp ? { code: cp.code, percent: cp.percent, discount, ok: !!check?.ok, reason: check && !check.ok ? check.reason : "" } : null,
+          payable: round2(Math.max(0, total - discount)),
         }
       : null,
   };
@@ -184,7 +192,7 @@ async function addOrder(tx: Tx, t: Table, a: Args, opts: { fromCustomer: boolean
   if (!s) {
     const [created] = await tx
       .insert(sessions)
-      .values({ id: uid(), tableId: t.id, status: "open", openedAt: now, closedAt: null, customerName: name, customerPhone: phone, guests: int(a.guests, 1, 40, t.seats), billRequestedAt: null, billId: null })
+      .values({ id: uid(), tableId: t.id, status: "open", openedAt: now, closedAt: null, customerName: name, customerPhone: phone, guests: int(a.guests, 1, 40, t.seats), billRequestedAt: null, billId: null, couponCode: null })
       .returning();
     s = created;
     await tx.update(tables).set({ sessionId: s.id }).where(eq(tables.id, t.id));
@@ -194,8 +202,6 @@ async function addOrder(tx: Tx, t: Table, a: Args, opts: { fromCustomer: boolean
     if (phone && !s.customerPhone) patch.customerPhone = phone;
     [s] = await tx.update(sessions).set(patch).where(eq(sessions.id, s.id)).returning();
   }
-
-  await moveStock(tx, tally(items, -1), now);
 
   const [seq] = await tx.update(meta).set({ orderSeq: sql`${meta.orderSeq} + 1` }).where(eq(meta.id, 1)).returning({ n: meta.orderSeq });
   const [o] = await tx
@@ -216,6 +222,7 @@ async function addOrder(tx: Tx, t: Table, a: Args, opts: { fromCustomer: boolean
       updatedAt: now,
     })
     .returning();
+  await moveStock(tx, tally(items, -1), { type: "sale", ref: `Order #${o.no}`, note: opts.fromCustomer ? "Guest order" : "Counter order" }, now);
   return o;
 }
 
@@ -237,10 +244,38 @@ export function requestBill(c: string) {
   }).then(async (code) => ({ view: await tableView(code) }));
 }
 
+/** Puts a coupon on the guest's open tab. Usage is only counted when the bill is made. */
+export function applyCoupon(c: string, raw: unknown) {
+  return mutate(async (tx) => {
+    const t = await tableByCode(tx, c);
+    const s = await openSession(tx, t);
+    if (!s) throw new ApiError("Order something first, then apply your coupon.");
+    const cc = str(raw, 24).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!cc) throw new ApiError("Enter a coupon code.");
+    const cp = await first(tx.select().from(coupons).where(eq(coupons.code, cc)));
+    if (!cp) throw new ApiError(`Coupon ${cc} doesn't exist.`);
+    const live = (await tx.select().from(orders).where(eq(orders.sessionId, s.id))).filter((o) => o.status !== "cancelled");
+    const sub = round2(live.reduce((a, o) => a + o.subtotal, 0));
+    const ok = checkCoupon(cp, sub);
+    if (!ok.ok) throw new ApiError(`Coupon ${cp.code}: ${ok.reason}.`);
+    await tx.update(sessions).set({ couponCode: cp.code }).where(eq(sessions.id, s.id));
+    return t.code;
+  }).then(async (code) => ({ view: await tableView(code) }));
+}
+
+export function removeCoupon(c: string) {
+  return mutate(async (tx) => {
+    const t = await tableByCode(tx, c);
+    const s = await openSession(tx, t);
+    if (s) await tx.update(sessions).set({ couponCode: null }).where(eq(sessions.id, s.id));
+    return t.code;
+  }).then(async (code) => ({ view: await tableView(code) }));
+}
+
 /* ================================ admin side ================================ */
 
 export async function adminState(): Promise<AdminState> {
-  const [m, st, prods, tabs, sess, ords, bls, cps, us] = await Promise.all([
+  const [m, st, prods, tabs, sess, ords, bls, cps, us, exps, moves] = await Promise.all([
     db.select().from(meta).where(eq(meta.id, 1)),
     db.select().from(settings).where(eq(settings.id, 1)),
     db.select().from(products).orderBy(asc(products.createdAt), asc(products.id)),
@@ -250,6 +285,8 @@ export async function adminState(): Promise<AdminState> {
     db.select().from(bills).orderBy(asc(bills.createdAt), asc(bills.id)),
     db.select().from(coupons).orderBy(desc(coupons.createdAt), desc(coupons.id)),
     db.select().from(staffUsers).orderBy(asc(staffUsers.createdAt), asc(staffUsers.id)),
+    db.select().from(expenses).orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
+    db.select().from(stockMovements).orderBy(desc(stockMovements.createdAt), desc(stockMovements.id)).limit(2000),
   ]);
   return {
     version: m[0]?.version ?? 0,
@@ -262,20 +299,40 @@ export async function adminState(): Promise<AdminState> {
     bills: bls,
     coupons: cps,
     users: us.map(publicUser),
+    expenses: exps,
+    stockMovements: moves,
   };
 }
 
-/** Moves stock for many products in one statement (untracked stock stays null). */
-async function moveStock(tx: Tx, deltas: Map<string, number>, stamp?: number) {
-  const rows = [...deltas].filter(([, d]) => d !== 0 || stamp !== undefined);
+type Move = { type: StockMoveType; ref?: string; note?: string };
+
+/** One row in the stock ledger. */
+const logMove = (tx: Tx, p: { id: string; name: string }, m: Move, qty: number, balanceAfter: number, at: number) =>
+  tx.insert(stockMovements).values({ id: uid(), productId: p.id, productName: p.name, type: m.type, qty, balanceAfter, note: m.note ?? "", ref: m.ref ?? "", createdAt: at });
+
+/** Moves stock for many products in one statement (untracked stock stays null) and
+    writes what really changed — after clamping at zero — to the stock ledger. */
+async function moveStock(tx: Tx, deltas: Map<string, number>, m: Move, stamp?: number) {
+  const rows = [...deltas].filter(([, d]) => d !== 0);
   if (!rows.length) return;
+  const at = stamp ?? Date.now();
   const vals = sql.join(rows.map(([id, d]) => sql`(${id}::text, ${d}::int)`), sql`, `);
-  await tx.execute(sql`
-    update products p
-    set stock = case when p.stock is null then null else greatest(0, p.stock + v.d) end,
-        updated_at = ${stamp === undefined ? sql`p.updated_at` : sql`${stamp}::bigint`}
-    from (values ${vals}) as v(id, d)
-    where p.id = v.id`);
+  const res = await tx.execute(sql`
+    with v(id, d) as (values ${vals}),
+    old as (select p.id, p.stock from products p join v on v.id = p.id),
+    upd as (
+      update products p
+      set stock = case when p.stock is null then null else greatest(0, p.stock + v.d) end,
+          updated_at = ${stamp === undefined ? sql`p.updated_at` : sql`${stamp}::bigint`}
+      from v
+      where p.id = v.id
+      returning p.id, p.name, p.stock)
+    select upd.id, upd.name, upd.stock as new_stock, old.stock as old_stock from upd join old on old.id = upd.id`);
+  const moved = (res.rows as { id: string; name: string; new_stock: number | null; old_stock: number | null }[]).filter((r) => r.new_stock !== null && r.old_stock !== null && r.new_stock !== r.old_stock);
+  if (moved.length)
+    await tx.insert(stockMovements).values(
+      moved.map((r) => ({ id: uid(), productId: r.id, productName: r.name, type: m.type, qty: r.new_stock! - r.old_stock!, balanceAfter: r.new_stock!, note: m.note ?? "", ref: m.ref ?? "", createdAt: at })),
+    );
 }
 
 const tally = (items: OrderItem[], sign: 1 | -1, into = new Map<string, number>()) => {
@@ -283,7 +340,7 @@ const tally = (items: OrderItem[], sign: 1 | -1, into = new Map<string, number>(
   return into;
 };
 
-const restock = (tx: Tx, items: OrderItem[], sign: 1 | -1) => moveStock(tx, tally(items, sign));
+const restock = (tx: Tx, items: OrderItem[], m: Move) => moveStock(tx, tally(items, 1), m);
 
 async function saveProduct(tx: Tx, a: Args) {
   const now = Date.now();
@@ -310,11 +367,16 @@ async function saveProduct(tx: Tx, a: Args) {
   const dupe = (await tx.select().from(products)).find((p) => p.name.toLowerCase() === name.toLowerCase() && p.id !== id);
   if (dupe) throw new ApiError(`"${dupe.name}" already exists.`);
   if (id) {
-    await must(tx.select().from(products).where(eq(products.id, id)), "Product");
+    const before = await must(tx.select().from(products).where(eq(products.id, id)), "Product");
     const [p] = await tx.update(products).set({ ...fields, updatedAt: now }).where(eq(products.id, id)).returning();
+    if (p.stock !== null) {
+      if (before.stock === null && p.stock > 0) await logMove(tx, p, { type: "initial", note: "Stock tracking turned on" }, p.stock, p.stock, now);
+      else if (before.stock !== null && p.stock !== before.stock) await logMove(tx, p, { type: "adjustment", note: "Edited in product form" }, p.stock - before.stock, p.stock, now);
+    }
     return p;
   }
   const [p] = await tx.insert(products).values({ id: uid(), ...fields, createdAt: now, updatedAt: now }).returning();
+  if (p.stock) await logMove(tx, p, { type: "initial", note: "Opening stock" }, p.stock, p.stock, now);
   return p;
 }
 
@@ -370,7 +432,8 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
   }
   if (!items.length) throw new ApiError("Add at least one item to the bill.");
 
-  const cc = str(a.couponCode, 24).toUpperCase();
+  // no code sent → use the one the guest applied from their phone
+  const cc = a.couponCode === undefined ? s?.couponCode ?? "" : str(a.couponCode, 24).toUpperCase();
   const coupon = cc ? await first(tx.select().from(coupons).where(eq(coupons.code, cc))) : null;
   if (cc && !coupon) throw new ApiError(`Coupon ${cc} doesn't exist.`);
   const manualType = a.manualType === "percent" ? "percent" : "amount";
@@ -397,11 +460,16 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
       for (const it of o.items) if (it.productId) delta.set(it.productId, (delta.get(it.productId) ?? 0) - it.qty);
     }
   }
-  await moveStock(tx, new Map([...delta].map(([pid, d]) => [pid, -d])));
 
   let invoiceNo = "";
   do invoiceNo = `INV-${new Date(now).getFullYear()}-${code(7)}`;
   while (await first(tx.select({ id: bills.id }).from(bills).where(eq(bills.invoiceNo, invoiceNo))));
+
+  const out = new Map<string, number>();
+  const back = new Map<string, number>();
+  for (const [pid, d] of delta) (d > 0 ? out : back).set(pid, -d);
+  await moveStock(tx, out, { type: "sale", ref: invoiceNo, note: "Sold at billing" }, now);
+  await moveStock(tx, back, { type: "adjustment", ref: invoiceNo, note: "Billed fewer than ordered" }, now);
 
   const [bill] = await tx
     .insert(bills)
@@ -420,6 +488,7 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
       couponCode: coupon && calc.couponDiscount > 0 ? coupon.code : null,
       couponPercent: coupon && calc.couponDiscount > 0 ? coupon.percent : 0,
       couponDiscount: calc.couponDiscount,
+      couponSource: coupon && calc.couponDiscount > 0 ? (s?.couponCode === coupon.code ? "guest" : "staff") : null,
       manualType,
       manualValue,
       manualDiscount: calc.manualDiscount,
@@ -528,7 +597,7 @@ export function adminOp(op: string, a: Args) {
             .where(and(eq(orders.sessionId, s.id), inArray(orders.status, ["new", "preparing"])));
           if (live.length) {
             await tx.update(orders).set({ status: "cancelled", updatedAt: now }).where(inArray(orders.id, live.map((o) => o.id)));
-            await restock(tx, live.flatMap((o) => o.items), 1);
+            await restock(tx, live.flatMap((o) => o.items), { type: "cancelled_order", ref: `${t.label} cleared`, note: "Tab cleared by staff" });
           }
         }
         await tx.update(tables).set({ sessionId: null }).where(eq(tables.id, t.id));
@@ -558,7 +627,7 @@ export function adminOp(op: string, a: Args) {
         if (o.status === "cancelled" && next !== "cancelled") throw new ApiError("A cancelled order can't be reopened — ask the table to order again.");
         const s = await first(tx.select().from(sessions).where(eq(sessions.id, o.sessionId)));
         if (s && s.status !== "open") throw new ApiError("This tab is already closed.");
-        if (next === "cancelled" && o.status !== "cancelled") await restock(tx, o.items, 1);
+        if (next === "cancelled" && o.status !== "cancelled") await restock(tx, o.items, { type: "cancelled_order", ref: `Order #${o.no}`, note: "Order cancelled" });
         const [u] = await tx.update(orders).set({ status: next, updatedAt: now }).where(eq(orders.id, o.id)).returning();
         return u;
       }
@@ -578,6 +647,12 @@ export function adminOp(op: string, a: Args) {
         else if (a.set !== undefined) stock = int(a.set, 0, 999999, 0);
         else stock = Math.max(0, (p.stock ?? 0) + int(a.delta, -99999, 99999, 0));
         const [u] = await tx.update(products).set({ stock, updatedAt: now }).where(eq(products.id, p.id)).returning();
+        const note = str(a.note, 120);
+        if (stock !== null && stock !== (p.stock ?? 0)) {
+          const diff = stock - (p.stock ?? 0);
+          const type: StockMoveType = p.stock === null ? "initial" : a.set === undefined && diff > 0 ? "added" : "adjustment";
+          await logMove(tx, u, { type, note: note || (type === "added" ? "Stock added" : type === "initial" ? "Stock tracking turned on" : "Stock corrected") }, diff, stock, now);
+        }
         return u;
       }
       case "category.rename": {
@@ -602,14 +677,48 @@ export function adminOp(op: string, a: Args) {
         return null;
       }
 
+      /* ---------- expenses ---------- */
+      case "expense.save": {
+        const title = str(a.title, 120);
+        const amount = round2(num(a.amount));
+        const date = str(a.expenseDate, 10) || shopToday(now);
+        if (!title) throw new ApiError("Give the expense a title.");
+        if (!(amount > 0)) throw new ApiError("Enter an amount greater than zero.");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ApiError("Pick a valid date.");
+        const mode = String(a.paymentMode);
+        const fields = { title, category: str(a.category, 40) || "General", amount, paymentMode: ["cash", "upi", "card", "bank"].includes(mode) ? mode : "cash", notes: str(a.notes, 300), expenseDate: date };
+        if (id) {
+          await must(tx.select().from(expenses).where(eq(expenses.id, id)), "Expense");
+          const [x] = await tx.update(expenses).set(fields).where(eq(expenses.id, id)).returning();
+          return x;
+        }
+        const [x] = await tx.insert(expenses).values({ id: uid(), ...fields, createdAt: now }).returning();
+        return x;
+      }
+      case "expense.delete": {
+        await must(tx.select().from(expenses).where(eq(expenses.id, id)), "Expense");
+        await tx.delete(expenses).where(eq(expenses.id, id));
+        return null;
+      }
+
       /* ---------- billing ---------- */
       case "bill.create":
         return createBill(tx, a);
+      case "bill.delete": {
+        const b = await must(tx.select().from(bills).where(eq(bills.id, id)), "Bill");
+        // a completed bill still counts — put its stock and coupon use back, same as a void
+        if (b.status === "completed") {
+          await restock(tx, b.items, { type: "void_bill", ref: b.invoiceNo, note: "Bill deleted" });
+          if (b.couponCode) await tx.update(coupons).set({ used: sql`greatest(0, ${coupons.used} - 1)` }).where(eq(coupons.code, b.couponCode));
+        }
+        await tx.delete(bills).where(eq(bills.id, b.id));
+        return null;
+      }
       case "bill.void": {
         const b = await must(tx.select().from(bills).where(eq(bills.id, id)), "Bill");
         if (b.status === "void") return b;
         const [u] = await tx.update(bills).set({ status: "void" }).where(eq(bills.id, b.id)).returning();
-        await restock(tx, b.items, 1);
+        await restock(tx, b.items, { type: "void_bill", ref: b.invoiceNo, note: "Bill voided" });
         if (b.couponCode) await tx.update(coupons).set({ used: sql`greatest(0, ${coupons.used} - 1)` }).where(eq(coupons.code, b.couponCode));
         return u;
       }

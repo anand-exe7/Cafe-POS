@@ -1,4 +1,4 @@
-import type { Bill } from "./types";
+import type { Bill, Expense, StockMovement } from "./types";
 
 /* Pure analytics over completed bills. Runs in the browser, in the viewer's local time. */
 
@@ -110,4 +110,71 @@ export function weekly(bills: Bill[], weekStart: number) {
     if (day >= 0 && day < 7) out[day] += b.total;
   }
   return out;
+}
+
+/** Money taken per method. A split bill adds its cash part to Cash and its card part to Card. */
+export function paymentStats(bills: Bill[]) {
+  let cash = 0, upi = 0, card = 0, splitN = 0;
+  for (const b of bills) {
+    cash += b.cashAmount;
+    upi += b.upiAmount;
+    card += b.cardAmount;
+    if (b.payment === "split") splitN++;
+  }
+  return { cash, upi, card, splitN };
+}
+
+/* ---------------- expenses ---------------- */
+
+/** Expense dates are shop-local YYYY-MM-DD; compare them as local midnight like bills are. */
+const dayOf = (d: string) => new Date(`${d}T12:00:00`).getTime();
+export const expensesIn = (list: Expense[], r: Range) => list.filter((e) => inRange(dayOf(e.expenseDate), r));
+
+export function expenseStats(list: Expense[], r: Range, category = "all", q = "") {
+  const needle = q.trim().toLowerCase();
+  const rows = expensesIn(list, r).filter(
+    (e) => (category === "all" || e.category === category) && (!needle || `${e.title} ${e.category} ${e.notes}`.toLowerCase().includes(needle)),
+  );
+  const by = new Map<string, number>();
+  let total = 0;
+  for (const e of rows) {
+    total += e.amount;
+    by.set(e.category, (by.get(e.category) ?? 0) + e.amount);
+  }
+  const breakdown = [...by].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
+  return { rows, total, breakdown, top: breakdown[0] ?? null, count: rows.length };
+}
+
+/* ---------------- stock ledger ---------------- */
+
+export function stockStats(moves: StockMovement[], r: Range) {
+  let added = 0, sold = 0, returned = 0, adjusted = 0;
+  for (const m of moves) {
+    if (!inRange(m.createdAt, r)) continue;
+    if (m.type === "added" || m.type === "initial") added += m.qty;
+    else if (m.type === "sale") sold -= m.qty;
+    else if (m.type === "cancelled_order" || m.type === "void_bill") returned += m.qty;
+    else adjusted += m.qty;
+  }
+  return { added, sold, returned, adjusted, net: added - sold + returned + adjusted };
+}
+
+/* ---------------- customers (name + mobile on each bill) ---------------- */
+
+export type CustomerStat = { key: string; name: string; phone: string; visits: number; spent: number; last: number };
+
+export function customerStats(bills: Bill[]): CustomerStat[] {
+  const m = new Map<string, CustomerStat>();
+  for (const b of bills) {
+    if (!b.customerPhone) continue;
+    const cur = m.get(b.customerPhone) ?? { key: b.customerPhone, name: "", phone: b.customerPhone, visits: 0, spent: 0, last: 0 };
+    cur.visits++;
+    cur.spent += b.total;
+    if (b.createdAt >= cur.last) {
+      cur.last = b.createdAt;
+      cur.name = b.customerName || cur.name;
+    }
+    m.set(b.customerPhone, cur);
+  }
+  return [...m.values()].sort((a, b) => b.spent - a.spent);
 }

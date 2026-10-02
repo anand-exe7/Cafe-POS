@@ -44,6 +44,7 @@ export type Session = {
   guests: number;
   billRequestedAt: number | null;
   billId: string | null;
+  couponCode: string | null;
 };
 
 export type OrderItem = {
@@ -75,8 +76,11 @@ export type Order = {
 };
 
 export type BillSource = "table" | "counter";
-export type PayMethod = "cash" | "upi" | "card";
+/** "split" = part cash, part card; cashAmount / cardAmount on the bill say how much each. */
+export type PayMethod = "cash" | "upi" | "card" | "split";
 export type DiscountType = "amount" | "percent";
+/** Who applied the coupon on a bill: the guest from their phone, or staff at billing. */
+export type CouponSource = "guest" | "staff";
 
 export type Bill = {
   id: string;
@@ -93,6 +97,7 @@ export type Bill = {
   couponCode: string | null;
   couponPercent: number;
   couponDiscount: number;
+  couponSource: CouponSource | null;
   manualType: DiscountType;
   manualValue: number;
   manualDiscount: number;
@@ -100,6 +105,10 @@ export type Bill = {
   extra: number;
   total: number;
   payment: PayMethod;
+  /** How the total was tendered. Always sums to `total`, whichever method was used. */
+  cashAmount: number;
+  upiAmount: number;
+  cardAmount: number;
   received: number;
   change: number;
   status: "completed" | "void";
@@ -117,6 +126,32 @@ export type Coupon = {
   limit: number | null;
   used: number;
   active: boolean;
+  createdAt: number;
+};
+
+export type Expense = {
+  id: string;
+  title: string;
+  category: string;
+  amount: number;
+  paymentMode: string;
+  notes: string;
+  /** YYYY-MM-DD */
+  expenseDate: string;
+  createdAt: number;
+};
+
+export type StockMoveType = "initial" | "added" | "sale" | "cancelled_order" | "void_bill" | "adjustment";
+
+export type StockMovement = {
+  id: string;
+  productId: string;
+  productName: string;
+  type: StockMoveType;
+  qty: number;
+  balanceAfter: number;
+  note: string;
+  ref: string;
   createdAt: number;
 };
 
@@ -156,6 +191,8 @@ export type DB = {
   bills: Bill[];
   coupons: Coupon[];
   users: StaffUser[];
+  expenses: Expense[];
+  stockMovements: StockMovement[];
 };
 
 /** What the admin panel receives (no secrets). */
@@ -191,6 +228,10 @@ export type TableView = {
     billRequested: boolean;
     name: string;
     hasPhone: boolean;
+    /** the coupon this guest applied, with what it saves right now */
+    coupon: { code: string; percent: number; discount: number; ok: boolean; reason: string } | null;
+    /** what the guest should expect to pay: total minus the coupon */
+    payable: number;
   } | null;
 };
 

@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import type { Bill } from "@/lib/types";
 import { rupee } from "@/lib/money";
-import { completedIn, isoWeek, itemStats, monthly, rangeOf, startOfWeek, summary, weekly, type Period } from "@/lib/analytics";
+import { completedIn, customerStats, expensesIn, isoWeek, itemStats, monthly, rangeOf, startOfWeek, paymentStats, stockStats, summary, weekly, type Period } from "@/lib/analytics";
+import Link from "next/link";
 import { useAdmin } from "./Store";
 import { Badge, Card, Empty, Kpi, Page, PageHead, Pills, SearchBox, Tabs, cx, fmtDate, fmtTime } from "./kit";
 
@@ -115,6 +116,7 @@ export default function AnalyticsPage() {
   const inPeriod = useMemo(() => completedIn(s.bills, range), [s.bills, range]);
   const today = useMemo(() => completedIn(s.bills, rangeOf("today")), [s.bills, now]); // eslint-disable-line react-hooks/exhaustive-deps
   const sum = summary(inPeriod);
+  const pay = paymentStats(inPeriod);
   const tsum = summary(today);
 
   const year = new Date().getFullYear();
@@ -126,6 +128,15 @@ export default function AnalyticsPage() {
   const wk = isoWeek();
 
   const needle = q.trim().toLowerCase();
+
+  /* The Expenses tab has its own filters; this uses the period picked here, so
+     the two agree on what "this month" means but can differ in range. */
+  const expensesTotal = useMemo(() => expensesIn(s.expenses, range).reduce((a, e) => a + e.amount, 0), [s.expenses, range]);
+  const net = sum.revenue - expensesTotal;
+  const stock = useMemo(() => stockStats(s.stockMovements, range), [s.stockMovements, range]);
+  const lowCount = s.products.filter((p) => p.stock !== null && p.stock <= p.lowAt).length;
+  const customers = useMemo(() => customerStats(inPeriod), [inPeriod]);
+  const repeat = customers.filter((c) => c.visits > 1).length;
 
   return (
     <Page>
@@ -182,7 +193,15 @@ export default function AnalyticsPage() {
       {tab === "revenue" && (
         <div className="adm-in space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Kpi label="Net earnings" value={rupee(net)} hint="Revenue − expenses" icon="rupee" tone={net >= 0 ? "emerald" : "red"} />
             <Kpi label="Total revenue" value={rupee(sum.revenue)} hint="Tables + counter combined" icon="rupee" tone="emerald" />
+            <Kpi label="Total expenses" value={rupee(expensesTotal)} hint="From the Expenses tab" icon="bag" tone="rose" />
+            <Kpi label="Discounts given" value={rupee(sum.discount)} hint={`${sum.discounted} discounted bills`} icon="coupon" tone="violet" />
+          </div>
+          <p className="rounded-xl border border-slate-100 bg-white px-4 py-2.5 text-center text-[12.5px] font-semibold text-slate-500">
+            Calculation: <b className="text-slate-800">Table + Counter revenue</b> − <b className="text-slate-800">Expenses</b> = <b className={net >= 0 ? "text-emerald-600" : "text-red-600"}>{rupee(net)}</b>
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi label="Completed bills" value={sum.count} hint="Table + counter bills" icon="billing" tone="amber" />
             <Kpi label="Table revenue" value={rupee(sum.tableRev)} hint="QR dine-in tabs" icon="utensils" tone="sky" />
             <Kpi label="Counter revenue" value={rupee(sum.counterRev)} hint="Walk-in counter sales" icon="bag" tone="violet" />
@@ -231,6 +250,32 @@ export default function AnalyticsPage() {
               </Card>
               <Card title="Top Items by Revenue">
                 <TopItems bills={inPeriod} />
+              </Card>
+              <Card title="Stock movement" right={<Link href="/admin/inventory/movements" className="text-[12px] font-bold text-red-600 hover:underline">Open</Link>}>
+                <dl className="space-y-2 text-[13px]">
+                  <div className="flex justify-between"><dt className="text-slate-500">Stock added</dt><dd className="font-bold text-emerald-600">+{stock.added}</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">Units sold</dt><dd className="font-bold text-slate-900">{stock.sold}</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">Returned (cancel / void)</dt><dd className="font-bold text-slate-900">+{stock.returned}</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">Adjustments</dt><dd className="font-bold text-slate-900">{stock.adjusted > 0 ? "+" : ""}{stock.adjusted}</dd></div>
+                  <div className="flex justify-between border-t border-dashed border-slate-200 pt-2"><dt className="text-slate-500">Low / sold-out items</dt><dd className={cx("font-bold", lowCount ? "text-amber-600" : "text-slate-900")}>{lowCount}</dd></div>
+                </dl>
+              </Card>
+              <Card title="Customers" right={<span className="text-[12px] text-slate-500">{customers.length} known · {repeat} repeat</span>}>
+                {customers.length ? (
+                  <ul className="space-y-2.5 text-[13px]">
+                    {customers.slice(0, 5).map((c) => (
+                      <li key={c.key} className="flex items-center justify-between gap-3">
+                        <span className="min-w-0">
+                          <b className="block truncate text-slate-800">{c.name || "—"}</b>
+                          <span className="text-[11.5px] text-slate-400">{c.phone} · {c.visits} visit{c.visits === 1 ? "" : "s"}</span>
+                        </span>
+                        <b className="shrink-0 text-slate-900">{rupee(c.spent)}</b>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[13px] text-slate-400">No customer mobiles on bills in this period.</p>
+                )}
               </Card>
             </div>
           </div>
@@ -333,6 +378,7 @@ export default function AnalyticsPage() {
               {[
                 { l: "Total discounts given", v: rupee(sum.discount), c: "text-red-600", i: "%" },
                 { l: "Discounted orders", v: String(sum.discounted), c: "text-slate-900", i: "▦" },
+                { l: "Guest-applied coupons", v: `${inPeriod.filter((b) => b.couponSource === "guest").length} · ${rupee(inPeriod.filter((b) => b.couponSource === "guest").reduce((a, b) => a + b.couponDiscount, 0))}`, c: "text-sky-600", i: "☺" },
                 { l: "Avg discount per order", v: rupee(sum.discounted ? Math.round(sum.discount / sum.discounted) : 0), c: "text-slate-900", i: "₹" },
               ].map((x) => (
                 <div key={x.l} className="rounded-2xl border border-stone-100 bg-[#f8f7f3] p-5">
@@ -389,7 +435,7 @@ export default function AnalyticsPage() {
                       <tr key={b.id} className="border-b border-slate-100 last:border-0">
                         <td className={cx(td, "font-semibold text-slate-900")}>{b.invoiceNo}</td>
                         <td className={cx(td, "font-medium text-slate-700")}>{b.customerPhone || "—"}</td>
-                        <td className={td}>{b.couponCode ? <Badge tone="violet">{b.couponCode}</Badge> : <span className="text-[12px] text-slate-400">Manual</span>}</td>
+                        <td className={td}>{b.couponCode ? <span className="inline-flex items-center gap-1.5"><Badge tone="violet">{b.couponCode}</Badge>{b.couponSource === "guest" && <Badge tone="sky">Guest</Badge>}</span> : <span className="text-[12px] text-slate-400">Manual</span>}</td>
                         <td className={cx(td, "text-right font-semibold text-slate-800")}>{rupee(b.subtotal)}</td>
                         <td className={cx(td, "text-right font-semibold text-red-600")}>-{rupee(b.discount)}</td>
                       </tr>

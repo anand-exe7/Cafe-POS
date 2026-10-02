@@ -13,6 +13,8 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin", label: "Tables", icon: "tables" },
   { href: "/admin/queue", label: "Live queue", icon: "utensils" },
   { href: "/admin/inventory", label: "Inventory", icon: "box" },
+  { href: "/admin/inventory/movements", label: "Stock movement", icon: "list" },
+  { href: "/admin/expenses", label: "Expenses", icon: "bag" },
   { href: "/admin/coupons", label: "Coupons", icon: "coupon" },
   { href: "/admin/users", label: "Users", icon: "users" },
 ];
@@ -91,7 +93,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     router.replace("/admin/login");
   };
 
-  const active = (href: string) => (href === "/admin" ? path === "/admin" : path.startsWith(href));
+  /* the longest matching entry wins, so /admin/inventory/movements doesn't also light up Inventory */
+  const active = (href: string) =>
+    href === "/admin" ? path === "/admin" : path.startsWith(href) && !NAV.some((n) => n.href.length > href.length && n.href.startsWith(href) && path.startsWith(n.href));
 
   const side = (
     <div className="flex h-full flex-col">

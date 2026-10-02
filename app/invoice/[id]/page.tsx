@@ -7,7 +7,7 @@ import { InvoiceActions } from "./InvoiceActions";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Invoice", robots: { index: false } };
 
-const PAY = { cash: "Cash", upi: "UPI", card: "Card" } as const;
+const PAY = { cash: "Cash", upi: "UPI", card: "Card", split: "Cash + Card" } as const;
 const inr = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Indian-style number to words (lakh / crore)
@@ -157,6 +157,18 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
               <div className="mb-0.5 text-[10px] font-semibold tracking-wider text-zinc-400 uppercase">Amount in Words</div>
               <div className="text-xs font-medium text-zinc-800 italic">{numberToWords(b.total)}</div>
             </div>
+            {b.payment === "split" && (
+              <div className="space-y-0.5 pt-1 text-xs text-zinc-600">
+                <div>
+                  <span className="text-zinc-400">Paid in Cash: </span>
+                  <span className="font-mono font-medium text-zinc-800">₹{inr(b.cashAmount)}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-400">Paid by Card: </span>
+                  <span className="font-mono font-medium text-zinc-800">₹{inr(b.cardAmount)}</span>
+                </div>
+              </div>
+            )}
             {b.payment === "cash" && b.received > 0 && (
               <div className="space-y-0.5 pt-1 text-xs text-zinc-600">
                 <div>

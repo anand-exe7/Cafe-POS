@@ -324,3 +324,122 @@ html:has(.adm) {
   font-weight: 700;
   font-size: 12pt;
 }
+
+.rcpt--2 {
+  font-size: 8pt;
+}
+.rcpt--2 h1 {
+  font-size: 11pt;
+}
+.rcpt--2 .big {
+  font-size: 10pt;
+}
+
+/* A3 / A4 / A5 invoice — sized in em, so paper size only changes font-size */
+.inv {
+  font: 400 11pt/1.45 var(--body), "Segoe UI", Arial, sans-serif;
+  color: #000;
+}
+.inv--a5 {
+  font-size: 9pt;
+}
+.inv--a4 {
+  font-size: 11pt;
+}
+.inv--a3 {
+  font-size: 15pt;
+}
+.inv p {
+  margin: 0;
+}
+.inv__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5em;
+  padding-bottom: 0.8em;
+  border-bottom: 2px solid #000;
+}
+.inv__head h1 {
+  margin: 0;
+  font-size: 1.9em;
+  line-height: 1.1;
+}
+.inv__head p {
+  color: #444;
+}
+.inv__meta {
+  text-align: right;
+}
+.inv__meta h2 {
+  margin: 0;
+  font-size: 1.3em;
+  letter-spacing: 0.2em;
+}
+.inv__to {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5em;
+  margin: 1em 0;
+}
+.inv__to span {
+  display: block;
+  font-size: 0.75em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #666;
+}
+.inv__r {
+  text-align: right;
+}
+.inv__tbl {
+  width: 100%;
+  border-collapse: collapse;
+}
+.inv__tbl th,
+.inv__tbl td {
+  padding: 0.45em 0.5em;
+  text-align: left;
+  border-bottom: 1px solid #ccc;
+}
+.inv__tbl th {
+  font-size: 0.8em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: #f1f1f1;
+  border-bottom: 1px solid #000;
+}
+.inv__tbl .n {
+  text-align: right;
+  white-space: nowrap;
+}
+.inv__tbl tr {
+  break-inside: avoid;
+}
+.inv__sum {
+  width: 55%;
+  margin: 1em 0 0 auto;
+  break-inside: avoid;
+}
+.inv__sum div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1em;
+  padding: 0.2em 0;
+}
+.inv__sum dt,
+.inv__sum dd {
+  margin: 0;
+}
+.inv__tot {
+  margin-top: 0.3em;
+  padding-top: 0.5em !important;
+  border-top: 2px solid #000;
+  font-size: 1.25em;
+  font-weight: 700;
+}
+.inv__foot {
+  margin-top: 2.5em;
+  text-align: center;
+  font-size: 0.85em;
+  color: #555;
+}

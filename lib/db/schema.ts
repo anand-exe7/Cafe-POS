@@ -1,6 +1,6 @@
 import { bigint, boolean, index, integer, jsonb, numeric, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { DiscountType, OrderItem, OrderSource, OrderStatus, PayMethod, SessionStatus } from "../types";
+import type { CouponSource, DiscountType, OrderItem, OrderSource, OrderStatus, PayMethod, SessionStatus, StockMoveType } from "../types";
 
 /* One table per type in lib/types.ts. Ids stay the app's own short text ids and
    timestamps stay epoch milliseconds, so rows map 1:1 onto the shapes the UI
@@ -65,6 +65,8 @@ export const sessions = pgTable(
     guests: integer("guests").notNull(),
     billRequestedAt: ms("bill_requested_at"),
     billId: text("bill_id"),
+    /** coupon the guest applied from their phone; validated again when the bill is made */
+    couponCode: text("coupon_code"),
   },
   (t) => [
     // a table can never have two open tabs
@@ -110,6 +112,7 @@ export const bills = pgTable(
     couponCode: text("coupon_code"),
     couponPercent: money("coupon_percent").notNull().default(0),
     couponDiscount: money("coupon_discount").notNull().default(0),
+    couponSource: text("coupon_source").$type<CouponSource>(),
     manualType: text("manual_type").$type<DiscountType>().notNull(),
     manualValue: money("manual_value").notNull().default(0),
     manualDiscount: money("manual_discount").notNull().default(0),
@@ -117,6 +120,9 @@ export const bills = pgTable(
     extra: money("extra").notNull().default(0),
     total: money("total").notNull(),
     payment: text("payment").$type<PayMethod>().notNull(),
+    cashAmount: money("cash_amount").notNull().default(0),
+    upiAmount: money("upi_amount").notNull().default(0),
+    cardAmount: money("card_amount").notNull().default(0),
     received: money("received").notNull(),
     change: money("change").notNull().default(0),
     status: text("status").$type<"completed" | "void">().notNull(),
@@ -160,3 +166,38 @@ export const loginAttempts = pgTable("login_attempts", {
   fails: integer("fails").notNull().default(0),
   lockedUntil: ms("locked_until").notNull().default(0),
 });
+
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    category: text("category").notNull(),
+    amount: money("amount").notNull(),
+    paymentMode: text("payment_mode").notNull().default("cash"),
+    notes: text("notes").notNull().default(""),
+    /** YYYY-MM-DD, shop-local */
+    expenseDate: text("expense_date").notNull(),
+    createdAt: ms("created_at").notNull(),
+  },
+  (t) => [index("expenses_date_idx").on(t.expenseDate)],
+);
+
+/** Every change to a product's tracked stock, newest last. */
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: text("id").primaryKey(),
+    productId: text("product_id").notNull(),
+    productName: text("product_name").notNull(),
+    type: text("type").$type<StockMoveType>().notNull(),
+    /** signed: + into stock, − out of it */
+    qty: integer("qty").notNull(),
+    balanceAfter: integer("balance_after").notNull(),
+    note: text("note").notNull().default(""),
+    /** what caused it: an order id, bill id or invoice number */
+    ref: text("ref").notNull().default(""),
+    createdAt: ms("created_at").notNull(),
+  },
+  (t) => [index("stock_moves_created_idx").on(t.createdAt), index("stock_moves_product_idx").on(t.productId)],
+);

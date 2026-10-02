@@ -8,6 +8,20 @@
       "when": 1790665062817,
       "tag": "0000_light_naoko",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790919381808,
+      "tag": "0001_stale_junta",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790931839046,
+      "tag": "0002_split_payment",
+      "breakpoints": true
     }
   ]
 }
