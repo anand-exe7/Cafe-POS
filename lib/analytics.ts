@@ -1,4 +1,4 @@
-import type { Bill, Expense, StockMovement } from "./types";
+import type { Bill, Expense } from "./types";
 
 /* Pure analytics over completed bills. Runs in the browser, in the viewer's local time. */
 
@@ -143,20 +143,6 @@ export function expenseStats(list: Expense[], r: Range, category = "all", q = ""
   }
   const breakdown = [...by].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount);
   return { rows, total, breakdown, top: breakdown[0] ?? null, count: rows.length };
-}
-
-/* ---------------- stock ledger ---------------- */
-
-export function stockStats(moves: StockMovement[], r: Range) {
-  let added = 0, sold = 0, returned = 0, adjusted = 0;
-  for (const m of moves) {
-    if (!inRange(m.createdAt, r)) continue;
-    if (m.type === "added" || m.type === "initial") added += m.qty;
-    else if (m.type === "sale") sold -= m.qty;
-    else if (m.type === "cancelled_order" || m.type === "void_bill") returned += m.qty;
-    else adjusted += m.qty;
-  }
-  return { added, sold, returned, adjusted, net: added - sold + returned + adjusted };
 }
 
 /* ---------------- customers (name + mobile on each bill) ---------------- */

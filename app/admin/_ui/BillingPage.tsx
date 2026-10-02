@@ -545,19 +545,19 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
         title="Bill saved"
         footer={
           done && (
-            <>
+            <div className={cx("grid w-full gap-2", done.customerPhone ? "grid-cols-3" : "grid-cols-2")}>
               {done.customerPhone && (
-                <a href={waLink(done.customerPhone, billText(done, shop, s.settings.publicUrl))} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#22c55e] px-4 text-[13px] font-semibold text-white hover:bg-[#16a34a]">
+                <a href={waLink(done.customerPhone, billText(done, shop, s.settings.publicUrl))} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#22c55e] px-3 text-[13px] font-semibold text-white hover:bg-[#16a34a]">
                   <WaIcon size={16} /> WhatsApp
                 </a>
               )}
-              <Btn icon="print" onClick={() => setPrintFor(done)}>
+              <Btn icon="print" className="w-full" onClick={() => setPrintFor(done)}>
                 Print receipt
               </Btn>
-              <Btn kind="red" onClick={() => setDone(null)}>
+              <Btn kind="red" className="w-full" onClick={() => setDone(null)}>
                 New bill
               </Btn>
-            </>
+            </div>
           )
         }
       >

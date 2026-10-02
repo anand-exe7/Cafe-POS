@@ -88,6 +88,7 @@ export default function InventoryPage() {
   const [manageCats, setManageCats] = useState(false);
   const [renameOf, setRenameOf] = useState<string | null>(null);
   const [renaming, setRenaming] = useState("");
+  const [move, setMove] = useState<{ p: Product; dir: "added" | "removed"; qty: string; note: string } | null>(null);
 
   const cats = useMemo(() => Array.from(new Set(s.products.map((p) => p.category))), [s.products]);
   const low = s.products.filter((p) => p.stock !== null && p.stock > 0 && p.stock <= p.lowAt);
@@ -145,6 +146,19 @@ export default function InventoryPage() {
     if (r.ok) {
       toast({ kind: "ok", title: `Renamed to ${to}` });
       if (cat === from) setCat(to);
+    }
+  };
+
+  const moveQty = Math.floor(Number(move?.qty) || 0);
+  const moveBad = !move || moveQty <= 0 || (move.dir === "removed" && moveQty > (move.p.stock ?? 0));
+  const saveMove = async () => {
+    if (!move || moveBad) return;
+    setBusy(true);
+    const r = await act<Product>("product.stock", { id: move.p.id, delta: move.dir === "added" ? moveQty : -moveQty, move: move.dir, note: move.note });
+    setBusy(false);
+    if (r.ok) {
+      toast({ kind: "ok", title: `${move.dir === "added" ? "Added" : "Removed"} ${moveQty} ${move.dir === "added" ? "to" : "from"} ${move.p.name}` });
+      setMove(null);
     }
   };
 
@@ -250,6 +264,11 @@ export default function InventoryPage() {
                   </td>
                   <td className={cx(td, "text-right")}>
                     <span className="inline-flex gap-1">
+                      {p.stock !== null && (
+                        <Btn size="sm" kind="plain" icon="box" onClick={() => setMove({ p, dir: "added", qty: "", note: "" })}>
+                          Stock in/out
+                        </Btn>
+                      )}
                       <Btn size="sm" kind="plain" icon="edit" onClick={() => open(p)}>
                         Edit
                       </Btn>
@@ -278,6 +297,47 @@ export default function InventoryPage() {
           )}
         </div>
       </div>
+
+      <Modal
+        open={!!move}
+        onClose={() => setMove(null)}
+        title={move ? `Stock in / out · ${move.p.name}` : ""}
+        footer={
+          <>
+            <Btn onClick={() => setMove(null)}>Cancel</Btn>
+            <Btn kind="red" disabled={busy || moveBad} onClick={saveMove}>
+              {move?.dir === "removed" ? "Remove stock" : "Add stock"}
+            </Btn>
+          </>
+        }
+      >
+        {move && (
+          <div className="space-y-4">
+            <p className="text-[13px] text-slate-500">
+              In stock now: <b className="text-slate-900">{move.p.stock}</b> · every change is written to the Stock movement timeline.
+            </p>
+            <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+              {(
+                [
+                  ["added", "Add stock"],
+                  ["removed", "Remove stock"],
+                ] as const
+              ).map(([d, t]) => (
+                <button key={d} type="button" onClick={() => setMove({ ...move, dir: d })} className={cx("h-9 flex-1 rounded-lg text-[13px] font-bold transition", move.dir === d ? "bg-white text-slate-900 shadow" : "text-slate-500")}>
+                  {t}
+                </button>
+              ))}
+            </div>
+            <Field label="Quantity">
+              <input className={inputCls} type="number" min={1} autoFocus inputMode="numeric" value={move.qty} onChange={(e) => setMove({ ...move, qty: e.target.value })} placeholder="e.g. 24" />
+            </Field>
+            {move.dir === "removed" && moveQty > (move.p.stock ?? 0) && <p className="text-[12.5px] font-semibold text-red-600">Only {move.p.stock} in stock.</p>}
+            <Field label={move.dir === "added" ? "Note (supplier, invoice…)" : "Reason (wastage, damaged, own use…)"}>
+              <input className={inputCls} maxLength={120} value={move.note} onChange={(e) => setMove({ ...move, note: e.target.value })} placeholder={move.dir === "added" ? "Fresh batch from bakery" : "Dropped / expired"} />
+            </Field>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={manageCats} onClose={() => setManageCats(false)} title="Manage categories" footer={<Btn onClick={() => setManageCats(false)}>Done</Btn>}>
         <ul className="grid gap-2">

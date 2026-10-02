@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react";
 import type { Bill } from "@/lib/types";
 import { rupee } from "@/lib/money";
-import { completedIn, customerStats, expensesIn, isoWeek, itemStats, monthly, rangeOf, startOfWeek, paymentStats, stockStats, summary, weekly, type Period } from "@/lib/analytics";
+import { completedIn, customerStats, expensesIn, isoWeek, itemStats, monthly, rangeOf, startOfWeek, paymentStats, summary, weekly, type Period } from "@/lib/analytics";
 import Link from "next/link";
 import { useAdmin } from "./Store";
+import { useLedger } from "./ledger";
 import { Badge, Card, Empty, Kpi, Page, PageHead, Pills, SearchBox, Tabs, cx, fmtDate, fmtTime } from "./kit";
 
 type Tab = "revenue" | "today" | "products" | "tables" | "coupons";
@@ -133,7 +134,8 @@ export default function AnalyticsPage() {
      the two agree on what "this month" means but can differ in range. */
   const expensesTotal = useMemo(() => expensesIn(s.expenses, range).reduce((a, e) => a + e.amount, 0), [s.expenses, range]);
   const net = sum.revenue - expensesTotal;
-  const stock = useMemo(() => stockStats(s.stockMovements, range), [s.stockMovements, range]);
+  const { data: ledger } = useLedger({ from: range?.from, to: range?.to, size: 1 });
+  const stock = ledger?.stats ?? { added: 0, sold: 0, removed: 0, returned: 0, adjusted: 0, net: 0 };
   const lowCount = s.products.filter((p) => p.stock !== null && p.stock <= p.lowAt).length;
   const customers = useMemo(() => customerStats(inPeriod), [inPeriod]);
   const repeat = customers.filter((c) => c.visits > 1).length;
@@ -248,6 +250,13 @@ export default function AnalyticsPage() {
               <Card title="Order Source">
                 <SourceSplit table={sum.tableN} counter={sum.counterN} />
               </Card>
+              <Card title="Payment mode" right={pay.splitN ? <span className="text-[12px] text-slate-500">{pay.splitN} split bill{pay.splitN === 1 ? "" : "s"}</span> : undefined}>
+                <dl className="space-y-2 text-[13px]">
+                  <div className="flex justify-between"><dt className="text-slate-500">Cash</dt><dd className="font-bold text-slate-900">{rupee(pay.cash)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">Card</dt><dd className="font-bold text-slate-900">{rupee(pay.card)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-slate-500">UPI</dt><dd className="font-bold text-slate-900">{rupee(pay.upi)}</dd></div>
+                </dl>
+              </Card>
               <Card title="Top Items by Revenue">
                 <TopItems bills={inPeriod} />
               </Card>
@@ -255,6 +264,7 @@ export default function AnalyticsPage() {
                 <dl className="space-y-2 text-[13px]">
                   <div className="flex justify-between"><dt className="text-slate-500">Stock added</dt><dd className="font-bold text-emerald-600">+{stock.added}</dd></div>
                   <div className="flex justify-between"><dt className="text-slate-500">Units sold</dt><dd className="font-bold text-slate-900">{stock.sold}</dd></div>
+                  {stock.removed > 0 && <div className="flex justify-between"><dt className="text-slate-500">Removed (waste / own use)</dt><dd className="font-bold text-slate-900">{stock.removed}</dd></div>}
                   <div className="flex justify-between"><dt className="text-slate-500">Returned (cancel / void)</dt><dd className="font-bold text-slate-900">+{stock.returned}</dd></div>
                   <div className="flex justify-between"><dt className="text-slate-500">Adjustments</dt><dd className="font-bold text-slate-900">{stock.adjusted > 0 ? "+" : ""}{stock.adjusted}</dd></div>
                   <div className="flex justify-between border-t border-dashed border-slate-200 pt-2"><dt className="text-slate-500">Low / sold-out items</dt><dd className={cx("font-bold", lowCount ? "text-amber-600" : "text-slate-900")}>{lowCount}</dd></div>

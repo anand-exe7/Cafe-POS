@@ -141,7 +141,18 @@ export type Expense = {
   createdAt: number;
 };
 
-export type StockMoveType = "initial" | "added" | "sale" | "cancelled_order" | "void_bill" | "adjustment";
+export type StockMoveType = "initial" | "added" | "removed" | "sale" | "cancelled_order" | "void_bill" | "adjustment";
+
+/** One page of the stock ledger plus totals for the whole selected period. */
+export type StockLedger = {
+  rows: StockMovement[];
+  total: number;
+  page: number;
+  pages: number;
+  stats: { added: number; sold: number; removed: number; returned: number; adjusted: number; net: number };
+  perProduct: { id: string; name: string; in: number; out: number; close: number | null }[];
+  products: { id: string; name: string }[];
+};
 
 export type StockMovement = {
   id: string;
@@ -192,7 +203,6 @@ export type DB = {
   coupons: Coupon[];
   users: StaffUser[];
   expenses: Expense[];
-  stockMovements: StockMovement[];
 };
 
 /** What the admin panel receives (no secrets). */

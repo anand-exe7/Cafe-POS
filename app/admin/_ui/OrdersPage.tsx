@@ -8,7 +8,7 @@ import { inRange, rangeOf, type Period } from "@/lib/analytics";
 import { useAdmin } from "./Store";
 import { billText, waLink } from "./receipt";
 import PrintModal from "./PrintModal";
-import { Badge, Btn, Empty, Icon, Modal, Page, PageHead, SearchBox, Tabs, WaIcon, csv, cx, downloadText, fmtDate, fmtDateTime, fmtTime } from "./kit";
+import { Badge, Btn, Empty, Icon, Modal, Page, PageHead, SearchBox, WaIcon, csv, cx, downloadText, fmtDate, fmtDateTime, fmtTime } from "./kit";
 
 type DateF = Extract<Period, "today" | "week" | "month" | "custom"> | "any";
 
@@ -181,7 +181,7 @@ export default function OrdersPage() {
                     <td className={cx(td, "text-right")}>
                       <span className="inline-flex gap-1.5">
                         {b.customerPhone && (
-                          <a href={waLink(b.customerPhone, billText(b, s.settings.shopName, s.settings.publicUrl))} target="_blank" rel="noopener noreferrer" title="Send on WhatsApp" aria-label="Send on WhatsApp" className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-50 text-[#22c55e] hover:bg-emerald-100">
+                          <a suppressHydrationWarning href={waLink(b.customerPhone, billText(b, s.settings.shopName, s.settings.publicUrl))} target="_blank" rel="noopener noreferrer" title="Send on WhatsApp" aria-label="Send on WhatsApp" className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-50 text-[#22c55e] hover:bg-emerald-100">
                             <WaIcon size={18} />
                           </a>
                         )}

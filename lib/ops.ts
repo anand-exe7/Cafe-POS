@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { ApiError, mutate, read } from "./store";
 import { code, uid } from "./seed";
 import { checkCoupon, computeBill, round2, shopToday } from "./money";
 import { hashPassword } from "./auth";
 import { db, type Db, type Tx } from "./db";
 import { bills, coupons, expenses, meta, orders, products, sessions, settings, staffUsers, stockMovements, tables } from "./db/schema";
-import type { AdminState, Bill, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, StockMoveType, Table, TableCard, TableClose, TableView } from "./types";
+import type { AdminState, Bill, StockLedger, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, StockMoveType, Table, TableCard, TableClose, TableView } from "./types";
 
 /* Every read/write the app makes, with validation. Route handlers are thin wrappers.
    Writes run inside store.mutate(), which serializes them and rolls back on error. */
@@ -275,7 +275,7 @@ export function removeCoupon(c: string) {
 /* ================================ admin side ================================ */
 
 export async function adminState(): Promise<AdminState> {
-  const [m, st, prods, tabs, sess, ords, bls, cps, us, exps, moves] = await Promise.all([
+  const [m, st, prods, tabs, sess, ords, bls, cps, us, exps] = await Promise.all([
     db.select().from(meta).where(eq(meta.id, 1)),
     db.select().from(settings).where(eq(settings.id, 1)),
     db.select().from(products).orderBy(asc(products.createdAt), asc(products.id)),
@@ -286,7 +286,6 @@ export async function adminState(): Promise<AdminState> {
     db.select().from(coupons).orderBy(desc(coupons.createdAt), desc(coupons.id)),
     db.select().from(staffUsers).orderBy(asc(staffUsers.createdAt), asc(staffUsers.id)),
     db.select().from(expenses).orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
-    db.select().from(stockMovements).orderBy(desc(stockMovements.createdAt), desc(stockMovements.id)).limit(2000),
   ]);
   return {
     version: m[0]?.version ?? 0,
@@ -300,8 +299,58 @@ export async function adminState(): Promise<AdminState> {
     coupons: cps,
     users: us.map(publicUser),
     expenses: exps,
-    stockMovements: moves,
   };
+}
+
+/** The stock ledger, one page at a time. Filters narrow the rows; the totals and the
+    per-product summary cover the whole date range so they don't change as you page. */
+export async function stockLedger(p: URLSearchParams): Promise<StockLedger> {
+  const from = Number(p.get("from")) || null;
+  const to = Number(p.get("to")) || null;
+  const size = Math.min(100, Math.max(1, Math.floor(Number(p.get("size"))) || 20));
+  const type = p.get("type") ?? "all";
+  const pid = p.get("pid") ?? "all";
+  const q = (p.get("q") ?? "").trim().slice(0, 80).replace(/[\\%_]/g, (c) => "\\" + c);
+  const M = stockMovements;
+
+  const inRange = and(from ? gte(M.createdAt, from) : undefined, to ? lte(M.createdAt, to) : undefined);
+  const where = and(
+    inRange,
+    type !== "all" ? eq(M.type, type as StockMoveType) : undefined,
+    pid !== "all" ? eq(M.productId, pid) : undefined,
+    q ? or(ilike(M.productName, `%${q}%`), ilike(M.note, `%${q}%`), ilike(M.ref, `%${q}%`)) : undefined,
+  );
+
+  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(M).where(where);
+  const pages = Math.max(1, Math.ceil(n / size));
+  const page = Math.min(pages, Math.max(1, Math.floor(Number(p.get("page"))) || 1));
+
+  const [rows, byType, perProduct, products] = await Promise.all([
+    db.select().from(M).where(where).orderBy(desc(M.createdAt), desc(M.id)).limit(size).offset((page - 1) * size),
+    db.select({ type: M.type, qty: sql<number>`coalesce(sum(${M.qty}), 0)::int` }).from(M).where(inRange).groupBy(M.type),
+    db
+      .select({
+        id: M.productId,
+        name: sql<string>`max(${M.productName})`,
+        in: sql<number>`coalesce(sum(case when ${M.qty} > 0 then ${M.qty} else 0 end), 0)::int`,
+        out: sql<number>`coalesce(sum(case when ${M.qty} < 0 then -${M.qty} else 0 end), 0)::int`,
+        close: sql<number | null>`(array_agg(${M.balanceAfter} order by ${M.createdAt} desc, ${M.id} desc))[1]`,
+      })
+      .from(M)
+      .where(inRange)
+      .groupBy(M.productId)
+      .orderBy(sql`sum(abs(${M.qty})) desc`)
+      .limit(15),
+    db.select({ id: M.productId, name: sql<string>`max(${M.productName})` }).from(M).groupBy(M.productId).orderBy(sql`max(${M.productName})`),
+  ]);
+
+  const sum = (t: StockMoveType) => byType.find((r) => r.type === t)?.qty ?? 0;
+  const added = sum("added") + sum("initial");
+  const sold = -sum("sale");
+  const removed = -sum("removed");
+  const returned = sum("cancelled_order") + sum("void_bill");
+  const adjusted = sum("adjustment");
+  return { rows, total: n, page, pages, stats: { added, sold, removed, returned, adjusted, net: added - sold - removed + returned + adjusted }, perProduct, products };
 }
 
 type Move = { type: StockMoveType; ref?: string; note?: string };
@@ -441,10 +490,21 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
   const calc = computeBill({ items, coupon, manualType, manualValue, extra: num(a.extra) || 0 });
   if (coupon && calc.couponOk && !calc.couponOk.ok) throw new ApiError(`Coupon ${coupon.code}: ${calc.couponOk.reason}.`);
 
-  const payment: PayMethod = a.payment === "upi" || a.payment === "card" ? a.payment : "cash";
+  const payment: PayMethod = a.payment === "upi" || a.payment === "card" || a.payment === "split" ? a.payment : "cash";
   const got = num(a.received);
   const received = payment === "cash" && got > 0 ? round2(got) : calc.total;
   if (received < calc.total) throw new ApiError(`Amount received is less than the grand total.`);
+
+  // How the total was tendered (change is never part of it). A split names both amounts.
+  let cashAmount = payment === "cash" ? calc.total : 0;
+  let cardAmount = payment === "card" ? calc.total : 0;
+  const upiAmount = payment === "upi" ? calc.total : 0;
+  if (payment === "split") {
+    cashAmount = round2(num(a.cashAmount));
+    cardAmount = round2(num(a.cardAmount));
+    if (!(cashAmount > 0) || !(cardAmount > 0)) throw new ApiError("Split payment needs both a cash and a card amount.");
+    if (round2(cashAmount + cardAmount) !== calc.total) throw new ApiError("Cash and card must add up to the grand total.");
+  }
 
   const phone = mobile(a.customerPhone);
   if (phone === null) throw new ApiError("Customer mobile should be a 10-digit number.");
@@ -496,6 +556,9 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
       extra: calc.extra,
       total: calc.total,
       payment,
+      cashAmount,
+      upiAmount,
+      cardAmount,
       received,
       change: round2(received - calc.total),
       status: "completed",
@@ -650,8 +713,11 @@ export function adminOp(op: string, a: Args) {
         const note = str(a.note, 120);
         if (stock !== null && stock !== (p.stock ?? 0)) {
           const diff = stock - (p.stock ?? 0);
-          const type: StockMoveType = p.stock === null ? "initial" : a.set === undefined && diff > 0 ? "added" : "adjustment";
-          await logMove(tx, u, { type, note: note || (type === "added" ? "Stock added" : type === "initial" ? "Stock tracking turned on" : "Stock corrected") }, diff, stock, now);
+          // the Inventory "Stock in / out" form says which it is; the +/- steppers and typed totals don't
+          const type: StockMoveType =
+            p.stock === null ? "initial" : a.move === "added" && diff > 0 ? "added" : a.move === "removed" && diff < 0 ? "removed" : a.set === undefined && diff > 0 ? "added" : "adjustment";
+          const fallback = { initial: "Stock tracking turned on", added: "Stock added", removed: "Stock removed", adjustment: "Stock corrected" } as Record<string, string>;
+          await logMove(tx, u, { type, note: note || fallback[type] }, diff, stock, now);
         }
         return u;
       }
