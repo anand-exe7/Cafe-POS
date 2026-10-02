@@ -63,15 +63,15 @@ export function itemStats(bills: Bill[]): ItemStat[] {
 }
 
 export function summary(bills: Bill[]) {
-  let revenue = 0, tableRev = 0, counterRev = 0, tableN = 0, counterN = 0, items = 0, discount = 0, discounted = 0;
+  let revenue = 0, tabRev = 0, counterRev = 0, tabN = 0, counterN = 0, items = 0, discount = 0, discounted = 0;
   for (const b of bills) {
     revenue += b.total;
     items += b.itemCount;
     discount += b.discount;
     if (b.discount > 0) discounted++;
-    if (b.source === "table") {
-      tableRev += b.total;
-      tableN++;
+    if (b.source === "tab") {
+      tabRev += b.total;
+      tabN++;
     } else {
       counterRev += b.total;
       counterN++;
@@ -81,9 +81,9 @@ export function summary(bills: Bill[]) {
   return {
     revenue,
     count: bills.length,
-    tableRev,
+    tabRev,
     counterRev,
-    tableN,
+    tabN,
     counterN,
     items,
     discount,

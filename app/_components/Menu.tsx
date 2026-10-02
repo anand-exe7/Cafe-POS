@@ -2,15 +2,16 @@
 
 import { subscribeChanges } from "@/lib/realtime";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { MenuItem, OrderStatus, TableClose, TableView } from "@/lib/types";
+import type { MenuItem, OrderStatus, TabClose, TabView } from "@/lib/types";
 import { rupee } from "@/lib/money";
-import { Arrow, Cherry } from "../../../_components/bits";
+import { Arrow, Cherry } from "./bits";
 
 /* ============================================================
-   TABLE MENU — what a guest sees after scanning the table QR.
+   MENU — what a guest sees after scanning the shop's QR.
    Browse → add → send to kitchen → watch status → finish up → pay.
-   When the counter settles the tab, the table's view reports it back here, so the
-   phone says goodbye and wipes itself clean for whoever sits down next.
+   A guest is known by the mobile they order with. When the counter settles their
+   tab, the view reports it back here, so the phone says goodbye and wipes itself
+   clean for the next visit.
    ============================================================ */
 
 type CSSVars = React.CSSProperties & Record<`--${string}`, string | number>;
@@ -121,7 +122,7 @@ function Stepper({ qty, onChange, max, size = "md", name }: { qty: number; onCha
 
 /* Pinned under the header for as long as the tab is open, so the state of the
    kitchen is always in view — not only while the "Your tab" sheet is open. */
-function LiveStatus({ orders, onOpen }: { orders: NonNullable<TableView["tab"]>["orders"]; onOpen: () => void }) {
+function LiveStatus({ orders, onOpen }: { orders: NonNullable<TabView["tab"]>["orders"]; onOpen: () => void }) {
   const live = orders.filter((o) => o.status === "new" || o.status === "preparing");
   const served = orders.filter((o) => o.status === "served");
   const lead = live[live.length - 1];
@@ -158,7 +159,7 @@ function LiveStatus({ orders, onOpen }: { orders: NonNullable<TableView["tab"]>[
 
 /* Coupon entry for the open tab. The discount is a preview — the counter
    re-checks the code when the bill is made. */
-function CouponBox({ tab, code, onView }: { tab: NonNullable<TableView["tab"]>; code: string; onView: (v: TableView) => void }) {
+function CouponBox({ tab, phone, onView }: { tab: NonNullable<TabView["tab"]>; phone: string; onView: (v: TabView) => void }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -166,7 +167,7 @@ function CouponBox({ tab, code, onView }: { tab: NonNullable<TableView["tab"]>; 
     setBusy(true);
     setMsg("");
     try {
-      const r = await fetch(`/api/table/${code}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch("/api/tab", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, phone }) });
       const data = await r.json();
       if (!r.ok) return setMsg(data.error || "Couldn't apply that coupon.");
       onView(data.view);
@@ -207,19 +208,18 @@ function CouponBox({ tab, code, onView }: { tab: NonNullable<TableView["tab"]>; 
   );
 }
 
-export default function TableMenu({ initial }: { initial: TableView }) {
-  const code = initial.table.code;
+export default function Menu({ initial }: { initial: TabView }) {
   const [view, setView] = useState(initial);
-  const [cart, setCart] = useStored<Cart>(`clc-cart-${code}`, NO_CART);
+  const [cart, setCart] = useStored<Cart>("clc-cart", NO_CART);
   const [saved, setSaved] = useStored("clc-guest", NO_GUEST);
-  /* True while this phone has a tab running at this table, so a phone that never
-     ordered here is never shown someone else's receipt. */
-  const [mine, setMine] = useStored(`clc-open-${code}`, false);
+  /* True while this phone has a tab running, so a phone that never ordered
+     is never shown someone else's receipt. */
+  const [mine, setMine] = useStored("clc-open", false);
   /* The close this phone has already been thanked for (its `closed.at`). The
      receipt is a one-time thing: it shows in full once, then this marker retires
      it, so closing the page and scanning again lands on a clean menu and the next
      order starts a brand-new tab. 0 = nothing owed yet. */
-  const [seenClose, setSeenClose] = useStored(`clc-seen-${code}`, 0);
+  const [seenClose, setSeenClose] = useStored("clc-seen", 0);
   const [q, setQ] = useState("");
   const [eggless, setEggless] = useState(false);
   const [active, setActive] = useState(0);
@@ -237,18 +237,43 @@ export default function TableMenu({ initial }: { initial: TableView }) {
   });
   const guest = { ...form, name: form.name ?? saved.name, phone: form.phone ?? saved.phone };
   const setGuest = (g: typeof guest) => setForm(g);
-  const [askDetails, setAskDetails] = useState(false);
 
   const railRef = useRef<HTMLDivElement>(null);
   const badgeRef = useRef<HTMLSpanElement>(null);
 
   /* ---------- live refresh (order status, sold-out items) ---------- */
+  const phone = saved.phone;
+  /* The phone the current `view` was fetched for. The first view is rendered on
+     the server without knowing whose phone this is, so until it has been fetched
+     for the saved number, an empty `tab` must not be read as "the visit is over". */
+  const [syncedFor, setSyncedFor] = useState("");
   const refresh = useCallback(async () => {
     try {
-      const r = await fetch(`/api/table/${code}`, { cache: "no-store" });
-      if (r.ok) setView(await r.json());
+      const r = await fetch("/api/tab", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "view", phone }), cache: "no-store" });
+      if (r.ok) {
+        setView(await r.json());
+        setSyncedFor(phone);
+      }
     } catch {}
-  }, [code]);
+  }, [phone]);
+
+  /* The server renders the menu alone (it can't know whose phone this is), so a
+     returning guest's tab — or their receipt — is fetched the moment the page loads. */
+  useEffect(() => {
+    if (!phone) return;
+    let live = true;
+    fetch("/api/tab", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "view", phone }), cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => {
+        if (!live || !v) return;
+        setView(v);
+        setSyncedFor(phone);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [phone]);
 
   const cooking = !!view.tab?.orders.some((o) => o.status === "new" || o.status === "preparing");
   useEffect(() => {
@@ -289,11 +314,12 @@ export default function TableMenu({ initial }: { initial: TableView }) {
 
   /* The receipt on screen. It lives in the memory-only half of the store, so it
      survives the re-render that retires the visit below but never a reload. */
-  const bye = useSyncExternalStore(subscribe, () => peek<TableClose | null>(`clc-bye-${code}`, null), () => null);
+  const bye = useSyncExternalStore(subscribe, () => peek<TabClose | null>("clc-bye", null), () => null);
 
   useEffect(() => {
     if (view.tab) return; // the tab is still running — nothing has ended
     if (!mine) return; // this phone was never part of it
+    if (syncedFor !== phone) return; // this phone's tab hasn't been fetched yet
     const close = view.closed;
     if (close && close.at === seenClose) return; // already thanked for this one
 
@@ -303,20 +329,19 @@ export default function TableMenu({ initial }: { initial: TableView }) {
        on a clean menu and the next order opens a brand-new tab. The receipt is
        shown once, here, and `seenClose` retires it for good. */
     if (close) {
-      putMem(`clc-bye-${code}`, close);
+      putMem("clc-bye", close);
       setSeenClose(close.at);
     }
     setMine(false);
     setCart(NO_CART);
     setSaved(NO_GUEST);
-  }, [view.tab, view.closed, mine, seenClose, code, setMine, setSeenClose, setCart, setSaved]);
+  }, [view.tab, view.closed, mine, seenClose, syncedFor, phone, setMine, setSeenClose, setCart, setSaved]);
 
-  /* Hand the table back. The phone was already wiped when the receipt went up,
-     so this just drops it and returns to a fresh menu without a reload. */
+  /* The phone was already wiped when the receipt went up, so this just drops
+     it and returns to a fresh menu without a reload. */
   const leave = () => {
-    putMem(`clc-bye-${code}`, null);
+    putMem("clc-bye", null);
     setForm({ name: null, phone: null, note: "" });
-    setAskDetails(false);
     setSheet(null);
     setFinish(false);
     setPlaced(null);
@@ -404,33 +429,31 @@ export default function TableMenu({ initial }: { initial: TableView }) {
   };
 
   /* ---------- place order ---------- */
-  const needDetails = !view.tab || !view.tab.hasPhone || askDetails;
+  /* The mobile is the key to the tab: asked once, remembered for the visit. */
+  const needDetails = !view.tab;
 
   const place = async () => {
     setErr("");
     if (!count) return;
     if (unavailable.length) return setErr("Some items changed — please adjust the ones marked below.");
-    if (needDetails) {
-      if (!view.tab && !guest.name.trim()) return setErr("Please tell us your name.");
-      if (!/^[6-9]\d{9}$/.test(guest.phone)) return setErr("Please enter a valid 10-digit mobile number.");
-    }
+    if (!view.tab && !guest.name.trim()) return setErr("Please tell us your name.");
+    if (!/^[6-9]\d{9}$/.test(guest.phone)) return setErr("Please enter a valid 10-digit mobile number.");
     setBusy(true);
     try {
-      const r = await fetch(`/api/table/${code}`, {
+      const r = await fetch("/api/tab", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "order",
           items: lines.map((l) => ({ productId: l.id, qty: l.qty })),
           name: guest.name,
-          phone: needDetails ? guest.phone : "",
+          phone: guest.phone,
           note: guest.note,
         }),
       });
       const data = await r.json();
       if (!r.ok) {
         setErr(data.error || "Couldn't send your order. Please try again.");
-        if (/mobile/i.test(data.error ?? "")) setAskDetails(true);
         refresh();
         return;
       }
@@ -438,7 +461,6 @@ export default function TableMenu({ initial }: { initial: TableView }) {
       setView(data.view);
       setCart(NO_CART);
       setForm((g) => ({ ...g, note: "" }));
-      setAskDetails(false);
       setSheet(null);
       setPlaced(data.no);
     } catch {
@@ -451,7 +473,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
   const askBill = async () => {
     setBusy(true);
     try {
-      const r = await fetch(`/api/table/${code}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "bill" }) });
+      const r = await fetch("/api/tab", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "bill", phone }) });
       const data = await r.json();
       if (r.ok) setView(data.view);
     } finally {
@@ -491,12 +513,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
             <span>Your tab</span>
             <b>{rupee(tab.total)}</b>
           </button>
-        ) : (
-          <span className="tm-table" aria-label={`You're at table ${view.table.label}`}>
-            <small>Table</small>
-            <b>{view.table.label}</b>
-          </span>
-        )}
+        ) : null}
       </header>
 
       {tab && tab.orders.length > 0 && <LiveStatus orders={tab.orders} onOpen={() => setSheet("tab")} />}
@@ -511,7 +528,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
           What are we <em>having?</em>
         </h1>
         <p className="tm-hero__sub">
-          Order from <b>Table {view.table.label}</b>. We&apos;ll bring it over — pay at the counter when you&apos;re done.
+          Order straight from your phone. We&apos;ll have it ready for you — pay at the counter when you&apos;re done.
         </p>
         <div className="tm-tools">
           <label className="tm-search">
@@ -594,7 +611,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
         <footer className="tm-foot">
           <Cherry size={20} />
           <p>
-            Allergies or a celebration at the table? Add a note with your order — the kitchen reads every one.
+            Allergies or a celebration? Add a note with your order — the kitchen reads every one.
           </p>
         </footer>
       </main>
@@ -607,7 +624,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
           </span>
           <span className="tm-cbar__t">
             View order
-            <small>{count === 1 ? "1 item" : `${count} items`} · Table {view.table.label}</small>
+            <small>{count === 1 ? "1 item" : `${count} items`}</small>
           </span>
           <b>{rupee(total)}</b>
           <Arrow size={18} />
@@ -619,7 +636,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
         <div className="tm-ticket">
           <div className="tm-ticket__head">
             <span>Order ticket</span>
-            <span>Table {view.table.label}</span>
+            <span>{view.tab ? "On your tab" : "New tab"}</span>
           </div>
           {lines.length === 0 ? (
             <p className="tm-ticket__empty">Your order is empty. Add something tasty!</p>
@@ -694,7 +711,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
           <div className="tm-tab">
             <div className="tm-tab__head">
               <div>
-                <small>Your tab · Table {view.table.label}</small>
+                <small>Your tab</small>
                 <b>{rupee(tab.total)}</b>
               </div>
               <span>{liveOrders === 1 ? "1 order" : `${liveOrders} orders`}</span>
@@ -734,7 +751,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
                 );
               })}
             </ol>
-            <CouponBox tab={tab} code={code} onView={setView} />
+            <CouponBox tab={tab} phone={phone} onView={setView} />
             {tab.coupon?.ok && (
               <div className="tm-tab__pay">
                 <span>To pay after coupon</span>
@@ -760,7 +777,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
           <span className="tm-dbar__t">
             {tab?.billRequested ? "Your bill is coming" : "Finished eating?"}
             <small>
-              Table {view.table.label} · {rupee(tab?.total ?? 0)} on your tab
+              {rupee(tab?.total ?? 0)} on your tab
             </small>
           </span>
           <b>{tab?.billRequested ? "View" : "Get the bill"}</b>
@@ -776,10 +793,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
               <div className="tm-rcpt__head">
                 <Cherry size={26} />
                 <b>{view.shopName}</b>
-                <span>
-                  Table {view.table.label}
-                  {tab.name ? ` · ${tab.name}` : ""}
-                </span>
+                {tab.name && <span>{tab.name}</span>}
               </div>
               <ul className="tm-rcpt__lines">
                 {billLines.map((l, i) => (
@@ -801,16 +815,14 @@ export default function TableMenu({ initial }: { initial: TableView }) {
                 <span>{tab.coupon?.ok ? "To pay" : "Total"}</span>
                 <b>{rupee(tab.payable)}</b>
               </div>
-              {!tab.billRequested && <CouponBox tab={tab} code={code} onView={setView} />}
+              {!tab.billRequested && <CouponBox tab={tab} phone={phone} onView={setView} />}
               <p className="tm-rcpt__fine">Any other discount is applied at the counter.</p>
             </div>
 
             {tab.billRequested ? (
               <div className="tm-billed tm-billed--big">
                 <b>The counter knows — your bill is on its way ✺</b>
-                <span>
-                  Settle it on your way out and Table {view.table.label} is handed straight to the next guests.
-                </span>
+                <span>Settle it at the counter whenever you&apos;re ready.</span>
               </div>
             ) : (
               <button type="button" className="tm-send" disabled={busy} onClick={askBill}>
@@ -841,15 +853,14 @@ export default function TableMenu({ initial }: { initial: TableView }) {
                 </h2>
                 <p className="tm-bye__amt">{rupee(bye.total)}</p>
                 <p>
-                  {bye.itemCount} item{bye.itemCount === 1 ? "" : "s"} settled at the counter. Table {view.table.label} is
-                  clear and ready for the next guests.
+                  {bye.itemCount} item{bye.itemCount === 1 ? "" : "s"} settled at the counter. Hope to see you again soon!
                 </p>
               </>
             ) : (
               <>
                 <small>Tab closed</small>
                 <h2>
-                  Table <em>cleared</em>
+                  Tab <em>cleared</em>
                 </h2>
                 <p>Our staff closed this tab without a bill. If that wasn&apos;t expected, please check at the counter.</p>
               </>
@@ -874,7 +885,7 @@ export default function TableMenu({ initial }: { initial: TableView }) {
             <h2>
               Sent to the <em>kitchen!</em>
             </h2>
-            <p>We&apos;ll bring it to Table {view.table.label}. You can keep adding to your order anytime.</p>
+            <p>We&apos;ll have it ready shortly. You can keep adding to your order anytime.</p>
             <div className="tm-done__btns">
               <button type="button" className="tm-send tm-send--ghost" onClick={() => { setPlaced(null); setSheet("tab"); }}>
                 Track order

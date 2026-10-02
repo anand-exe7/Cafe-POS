@@ -1,8 +1,8 @@
 import { bigint, boolean, index, integer, jsonb, numeric, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { CouponSource, DiscountType, OrderItem, OrderSource, OrderStatus, PayMethod, SessionStatus, StockMoveType } from "../types";
+import type { BillSource, CouponSource, DiscountType, OrderItem, OrderSource, OrderStatus, PayMethod, SessionStatus, StockMoveType } from "../types";
 
-/* One table per type in lib/types.ts. Ids stay the app's own short text ids and
+/* One database table per type in lib/types.ts. Ids stay the app's own short text ids and
    timestamps stay epoch milliseconds, so rows map 1:1 onto the shapes the UI
    already consumes. Money is numeric(12,2), read back as a JS number. */
 
@@ -39,39 +39,25 @@ export const products = pgTable("products", {
   updatedAt: ms("updated_at").notNull(),
 });
 
-export const tables = pgTable(
-  "tables",
-  {
-    id: text("id").primaryKey(),
-    label: text("label").notNull(),
-    seats: integer("seats").notNull(),
-    code: text("code").notNull(),
-    sessionId: text("session_id"),
-    createdAt: ms("created_at").notNull(),
-  },
-  (t) => [uniqueIndex("tables_code_uq").on(t.code)],
-);
-
 export const sessions = pgTable(
   "sessions",
   {
     id: text("id").primaryKey(),
-    tableId: text("table_id").notNull(),
     status: text("status").$type<SessionStatus>().notNull(),
     openedAt: ms("opened_at").notNull(),
     closedAt: ms("closed_at"),
     customerName: text("customer_name").notNull().default(""),
-    customerPhone: text("customer_phone").notNull().default(""),
-    guests: integer("guests").notNull(),
+    /** 10-digit mobile: the key a tab is found by */
+    customerPhone: text("customer_phone").notNull(),
     billRequestedAt: ms("bill_requested_at"),
     billId: text("bill_id"),
     /** coupon the guest applied from their phone; validated again when the bill is made */
     couponCode: text("coupon_code"),
   },
   (t) => [
-    // a table can never have two open tabs
-    uniqueIndex("sessions_one_open_per_table").on(t.tableId).where(sql`${t.status} = 'open'`),
-    index("sessions_table_idx").on(t.tableId),
+    // a phone number can never have two open tabs
+    uniqueIndex("sessions_one_open_per_phone").on(t.customerPhone).where(sql`${t.status} = 'open'`),
+    index("sessions_phone_idx").on(t.customerPhone),
   ],
 );
 
@@ -80,7 +66,6 @@ export const orders = pgTable(
   {
     id: text("id").primaryKey(),
     no: integer("no").notNull(),
-    tableId: text("table_id").notNull(),
     sessionId: text("session_id").notNull(),
     items: jsonb("items").$type<OrderItem[]>().notNull(),
     note: text("note").notNull().default(""),
@@ -100,9 +85,7 @@ export const bills = pgTable(
   {
     id: text("id").primaryKey(),
     invoiceNo: text("invoice_no").notNull(),
-    source: text("source").$type<"table" | "counter">().notNull(),
-    tableId: text("table_id"),
-    tableLabel: text("table_label").notNull(),
+    source: text("source").$type<BillSource>().notNull(),
     sessionId: text("session_id"),
     customerName: text("customer_name").notNull().default(""),
     customerPhone: text("customer_phone").notNull().default(""),

@@ -22,6 +22,13 @@
       "when": 1790931839046,
       "tag": "0002_split_payment",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790957489904,
+      "tag": "0003_phone_tabs",
+      "breakpoints": true
     }
   ]
 }

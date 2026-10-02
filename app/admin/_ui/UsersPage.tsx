@@ -11,7 +11,7 @@ import { Badge, Btn, Empty, Field, Icon, Modal, Page, PageHead, SearchBox, cx, f
    There is no sign-up anywhere in this app: guests order from a QR code and
    leave a mobile number, so that number is the identity every row is keyed on.
    A row is therefore built from order history, and "admin" is simply whether a
-   login exists for that number — which is what lets a regular at a table be
+   login exists for that number — which is what lets a regular be
    handed access without typing their details in again.
    ------------------------------------------------------------------ */
 
@@ -95,7 +95,7 @@ export default function UsersPage() {
 
       {!rows.length ? (
         <Empty icon="users" title="Nobody yet">
-          Guests appear here as soon as they place their first order from a table.
+          Guests appear here as soon as they place their first order.
         </Empty>
       ) : !shown.length ? (
         <Empty icon="search" title="No one matches">

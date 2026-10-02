@@ -8,7 +8,7 @@ import { Btn, Icon, Modal, SearchBox, cx } from "./kit";
 
 const thumb = (src: string) => (src.includes("images.unsplash.com") ? src.replace(/([?&])w=\d+/, "$1w=120") : src);
 
-/** Product picker. `onPick` = pick one (billing row); `onAdd` = build a small order (table tab). */
+/** Product picker. `onPick` = pick one (billing row); `onAdd` = build a small order (customer tab). */
 export default function Catalog({
   open,
   onClose,

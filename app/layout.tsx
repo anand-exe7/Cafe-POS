@@ -21,7 +21,7 @@ const caveat = Caveat({
 
 export const metadata: Metadata = {
   title: "Chef Loving Cakes | Kodaikanal",
-  description: "Order to your table at Chef Loving Cakes — scan the QR card on your table, or pick your table here.",
+  description: "Order from your phone at Chef Loving Cakes — browse the menu, add to your tab and pay at the counter.",
   robots: { index: false, follow: false },
 };
 

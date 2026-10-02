@@ -39,11 +39,9 @@ landing's own paint.
    restore the original relative paths — `HeroStage.tsx` reads `../pieces.json`.)
 3. The images it uses are still in `public/` (`cake_bg.png`, `pieces/p0…p32.png`).
 
-## Putting it back in front of the QR flow
+## Note
 
-`/t/<code>` used to render this page with every order button pointing at that
-table's menu; it now redirects straight to `/t/<code>/menu`. To restore the old
-greeting, replace `app/t/[code]/page.tsx` with a render of
-`<Landing table={{ label, code }} />` (see this file's git history) and import
-`landing/landing.css` there too. The order bar it drops at the bottom of the
-screen (`.tbar`) is still defined at the top of `app/t/table.css`.
+This page was written for the old table-ordering app (per-table QR cards and a
+table picker). Tables are gone — guests now order from `/` by phone number — so
+the `table` / `tables` props and the `.tbar` order bar here are leftovers. The bar's
+CSS still lives at the top of `app/menu.css`.

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   TABLE ORDERING — guest side (/t/<code> and /t/<code>/menu)
+   GUEST ORDERING — the menu at /
    Same kitchen as the landing page: cocoa · buttercream · cherry, Fraunces.
    Motion is transform/opacity only.
    ========================================================================== */
@@ -147,7 +147,6 @@
   text-decoration: none;
   font: italic 500 21px/1 var(--display);
 }
-.tm-table,
 .tm-tabbtn {
   display: inline-flex;
   align-items: center;
@@ -162,7 +161,6 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
-.tm-table b,
 .tm-tabbtn b {
   display: grid;
   place-items: center;
@@ -1384,37 +1382,6 @@
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-top: 8px;
-}
-
-/* ---------- unknown table ---------- */
-.tm-lost {
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 14px;
-  min-height: 100vh;
-  padding: 24px;
-  background: var(--cocoa);
-  color: var(--cream);
-  text-align: center;
-}
-.tm-lost h1 {
-  margin: 0;
-  font: 400 clamp(36px, 8vw, 64px) / 1 var(--display);
-}
-.tm-lost h1 em {
-  display: block;
-  color: var(--cherry-lite);
-}
-.tm-lost p {
-  max-width: 420px;
-  margin: 0;
-  color: rgba(245, 236, 220, 0.72);
-}
-.tm-lost .tm-send {
-  width: auto;
-  padding: 0 26px;
-  background: var(--cherry);
 }
 
 /* ---------- keyframes ---------- */

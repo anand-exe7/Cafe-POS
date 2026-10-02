@@ -70,7 +70,7 @@ export default function CouponsPage() {
     <Page>
       <PageHead
         title="Coupon Management"
-        sub="Discounts apply to the item subtotal only. Guests can enter a code from their table; staff can apply one in Billing."
+        sub="Discounts apply to the item subtotal only. Guests can enter a code from their phone; staff can apply one in Billing."
         right={
           <span className="flex gap-2">
             <Btn icon="refresh" onClick={() => refresh()} className="h-10">

@@ -107,7 +107,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
               </div>
               <div>
                 <span className="text-zinc-400">Channel: </span>
-                <span className="text-zinc-700 uppercase">{b.source === "table" ? `Table ${b.tableLabel}` : "Counter"}</span>
+                <span className="text-zinc-700 uppercase">{b.source === "tab" ? "Order from phone" : "Counter"}</span>
               </div>
             </div>
           </div>
@@ -120,7 +120,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           {b.customerPhone ? (
             <div className="mt-0.5 font-mono text-xs text-zinc-600">+91 {b.customerPhone}</div>
           ) : (
-            <div className="mt-0.5 text-xs text-zinc-400 italic">{b.source === "counter" ? "Walk-in Counter Sale" : `Dine-in · Table ${b.tableLabel}`}</div>
+            <div className="mt-0.5 text-xs text-zinc-400 italic">Walk-in Counter Sale</div>
           )}
         </div>
 

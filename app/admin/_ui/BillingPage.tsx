@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Bill, Coupon, DiscountType, OrderItem, PayMethod } from "@/lib/types";
 import { checkCoupon, computeBill, couponStatus, mergeItems, rupee } from "@/lib/money";
-import { useAdmin, type FloorTable } from "./Store";
+import { useAdmin, whoIs, type FloorTab } from "./Store";
 import Catalog from "./Catalog";
 import PrintModal, { PrintFormats } from "./PrintModal";
 import { Receipt, billText, waLink, type PrintFormat } from "./receipt";
@@ -24,29 +24,29 @@ const tenDigits = (v: string) => {
   return bare.slice(0, 10);
 };
 const okPhone = (p: string) => /^[6-9]\d{9}$/.test(p);
-const sigOf = (f: FloorTable) => f.orders.map((o) => o.id + o.status).join("|");
+const sigOf = (f: FloorTab) => f.orders.map((o) => o.id + o.status).join("|");
 
 let seq = 0;
 const blank = (): Line => ({ key: ++seq, productId: null, name: "", price: "", qty: 1 });
-const linesOf = (f: FloorTable): Line[] => {
+const linesOf = (f: FloorTab): Line[] => {
   const items = mergeItems(f.orders.filter((o) => o.status !== "cancelled").flatMap((o) => o.items));
   return items.length ? items.map((i) => ({ key: ++seq, productId: i.productId, name: i.name, price: String(i.price), qty: i.qty })) : [blank()];
 };
 
-export default function BillingPage({ tableId }: { tableId?: string }) {
+export default function BillingPage({ sessionId }: { sessionId?: string }) {
   const { s, floor, act, print, now } = useAdmin();
   const shop = s.settings.shopName;
 
-  const openTabs = floor.filter((f) => f.session);
-  const start = tableId ? floor.find((f) => f.table.id === tableId && f.session) : undefined;
+  const openTabs = floor;
+  const start = sessionId ? floor.find((f) => f.session.id === sessionId) : undefined;
 
-  const [mode, setMode] = useState<"table" | "counter">(tableId || openTabs.length ? "table" : "counter");
-  const [sel, setSel] = useState<string | null>(start?.table.id ?? null);
+  const [mode, setMode] = useState<"tab" | "counter">(sessionId || openTabs.length ? "tab" : "counter");
+  const [sel, setSel] = useState<string | null>(start?.session.id ?? null);
   const [lines, setLines] = useState<Line[]>(() => (start ? linesOf(start) : [blank()]));
-  const [name, setName] = useState(start?.session?.customerName ?? "");
-  const [phone, setPhone] = useState(start?.session?.customerPhone ?? "");
+  const [name, setName] = useState(start?.session.customerName ?? "");
+  const [phone, setPhone] = useState(start?.session.customerPhone ?? "");
   const [sig, setSig] = useState(start ? sigOf(start) : "");
-  const [coupon, setCoupon] = useState(start?.session?.couponCode ?? "");
+  const [coupon, setCoupon] = useState(start?.session.couponCode ?? "");
   const [newCp, setNewCp] = useState<{ code: string; percent: string; minOrder: string } | null>(null);
   const [mType, setMType] = useState<DiscountType>("amount");
   const [mVal, setMVal] = useState("");
@@ -62,9 +62,9 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
   const [done, setDone] = useState<Bill | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const f = mode === "table" && sel ? floor.find((x) => x.table.id === sel && x.session) ?? null : null;
+  const f = mode === "tab" && sel ? floor.find((x) => x.session.id === sel) ?? null : null;
   const stale = f && sig && sigOf(f) !== sig;
-  const lost = mode === "table" && sel && !f;
+  const lost = mode === "tab" && sel && !f;
 
   const reset = (keepMode = true) => {
     setSel(null);
@@ -83,12 +83,12 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
     if (!keepMode) setMode("counter");
   };
 
-  const pickTable = (x: FloorTable) => {
-    setSel(x.table.id);
+  const pickTab = (x: FloorTab) => {
+    setSel(x.session.id);
     setLines(linesOf(x));
-    setName(x.session?.customerName ?? "");
-    setPhone(x.session?.customerPhone ?? "");
-    setCoupon(x.session?.couponCode ?? "");
+    setName(x.session.customerName);
+    setPhone(x.session.customerPhone);
+    setCoupon(x.session.couponCode ?? "");
     setSig(sigOf(x));
   };
 
@@ -121,7 +121,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
   const splitOff = Math.round((calc.total - sCash - sCard) * 100) / 100;
 
   const problems: string[] = [];
-  if (mode === "table" && !f) problems.push("Pick a table with an open tab.");
+  if (mode === "tab" && !f) problems.push("Pick a customer with an open tab.");
   if (!items.length) problems.push("Add at least one item.");
   if (items.some((i) => !i.name)) problems.push("Every item needs a name.");
   if (cp && calc.couponOk && !calc.couponOk.ok) problems.push(`Coupon ${cp.code}: ${calc.couponOk.reason}.`);
@@ -137,7 +137,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
     setBusy(true);
     const r = await act<Bill>("bill.create", {
       source: mode,
-      tableId: f?.table.id,
+      sessionId: f?.session.id,
       customerName: name,
       customerPhone: phone,
       items,
@@ -179,7 +179,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
         <div className="flex rounded-2xl bg-slate-100 p-1">
           {(
             [
-              ["table", "Table bill", "bg-red-500"],
+              ["tab", "Customer tab", "bg-red-500"],
               ["counter", "Counter (walk-in)", "bg-emerald-500"],
             ] as const
           ).map(([m, t, dot]) => (
@@ -203,43 +203,43 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_470px]">
         {/* ================= left ================= */}
         <div className="space-y-5">
-          {mode === "table" && (
+          {mode === "tab" && (
             <section className={box}>
               <h2 className="mb-4 flex items-center gap-2.5 text-[18px] font-bold text-slate-900">
-                <Icon name="tables" size={20} className="text-red-600" /> Select Table
+                <Icon name="tables" size={20} className="text-red-600" /> Select Open Tab
               </h2>
               {openTabs.length ? (
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 2xl:grid-cols-4">
                   {openTabs.map((x) => (
                     <button
-                      key={x.table.id}
+                      key={x.session.id}
                       type="button"
-                      onClick={() => pickTable(x)}
+                      onClick={() => pickTab(x)}
                       className={cx(
                         "relative rounded-2xl border p-3 text-left transition",
-                        sel === x.table.id ? "border-red-400 bg-red-50 ring-4 ring-red-50" : "border-slate-200 hover:border-slate-400",
+                        sel === x.session.id ? "border-red-400 bg-red-50 ring-4 ring-red-50" : "border-slate-200 hover:border-slate-400",
                       )}
                     >
                       <span className="flex items-center justify-between">
-                        <b className="adm-num text-[20px] font-extrabold text-slate-900">{x.table.label}</b>
+                        <b className="block truncate text-[16px] font-extrabold text-slate-900">{x.session.customerName || "Guest"}</b>
                         {x.billRequested && <span className="adm-pulse h-2.5 w-2.5 rounded-full bg-amber-400 text-amber-400" title="Asked for the bill" />}
                       </span>
                       <span className="adm-num block text-[15px] font-bold text-red-600">{rupee(x.total)}</span>
-                      <span className="block truncate text-[11.5px] text-slate-500">
-                        {x.session?.customerName || "Guest"} · {ago(x.session!.openedAt, now)}
+                      <span className="adm-num block truncate text-[11.5px] text-slate-500">
+                        {x.session.customerPhone} · {ago(x.session.openedAt, now)}
                       </span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-500">No open tabs right now. Tabs open automatically when a table orders — or switch to Counter for a walk-in.</p>
+                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-500">No open tabs right now. Tabs open automatically when a guest orders — or switch to Counter for a walk-in.</p>
               )}
               {stale && (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
                   <span>
-                    <b>{f!.table.label}</b> has new activity since you opened it.
+                    <b>{whoIs(f!.session)}</b> has new activity since you opened it.
                   </span>
-                  <Btn size="sm" kind="dark" icon="refresh" onClick={() => pickTable(f!)}>
+                  <Btn size="sm" kind="dark" icon="refresh" onClick={() => pickTab(f!)}>
                     Reload items
                   </Btn>
                 </div>
@@ -343,7 +343,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
             <dl className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-slate-50/70 px-4 text-[12px]">
               <div className="flex items-center justify-between py-3">
                 <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Source</dt>
-                <dd>{mode === "table" ? <Badge tone="red">{f ? `Table ${f.table.label}` : "Table"}</Badge> : <Badge tone="green">Counter</Badge>}</dd>
+                <dd>{mode === "tab" ? <Badge tone="red">Customer tab</Badge> : <Badge tone="green">Counter</Badge>}</dd>
               </div>
               <div className="flex items-center justify-between gap-3 py-3">
                 <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Customer</dt>
@@ -353,12 +353,10 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
                 <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Phone</dt>
                 <dd className="font-semibold text-slate-800">{phone || "-"}</dd>
               </div>
-              {f?.session && (
+              {f && (
                 <div className="flex items-center justify-between py-3">
-                  <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Seated</dt>
-                  <dd className="font-semibold text-slate-800">
-                    {fmtTime(f.session.openedAt)} · {f.session.guests} guests
-                  </dd>
+                  <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Opened</dt>
+                  <dd className="font-semibold text-slate-800">{fmtTime(f.session.openedAt)}</dd>
                 </div>
               )}
             </dl>
@@ -385,7 +383,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
                   + New coupon
                 </button>
               </div>
-              {f?.session?.couponCode && f.session.couponCode === coupon && <p className="mb-2 text-[12px] font-semibold text-sky-600">Applied by the guest from their phone.</p>}
+              {f?.session.couponCode && f.session.couponCode === coupon && <p className="mb-2 text-[12px] font-semibold text-sky-600">Applied by the guest from their phone.</p>}
               <select className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-[14px] font-semibold text-slate-800 outline-none focus:border-red-400" value={coupon} onChange={(e) => setCoupon(e.target.value)}>
                 <option value="">No Coupon</option>
                 {couponOptions.map((c) => {
@@ -490,13 +488,13 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
               )}
             </div>
 
-            {problems.length > 0 && (items.length > 0 || mode === "table") && <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">{problems[0]}</p>}
+            {problems.length > 0 && (items.length > 0 || mode === "tab") && <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">{problems[0]}</p>}
 
             <div className="space-y-2">
               <Btn size="lg" kind="red" disabled={!ready} onClick={() => (setPrinting(false), setSaveOpen(true))} className="w-full uppercase">
                 Save order
               </Btn>
-              {mode === "table" && f && <p className="pt-1 text-center text-[11.5px] text-slate-400">Completing closes {f.table.label}&apos;s tab — the next guests start fresh.</p>}
+              {mode === "tab" && f && <p className="pt-1 text-center text-[11.5px] text-slate-400">Completing closes {whoIs(f.session)}&apos;s tab — their next order starts a fresh one.</p>}
             </div>
           </div>
         </aside>
@@ -569,7 +567,7 @@ export default function BillingPage({ tableId }: { tableId?: string }) {
             <p className="font-bold text-slate-900">{done.invoiceNo}</p>
             <p className="adm-num text-[32px] font-extrabold">{rupee(done.total)}</p>
             <p className="text-[13px] text-slate-500">
-              {done.source === "table" ? `${done.tableLabel} is now free for the next guests.` : "Counter sale recorded."}
+              {done.source === "tab" ? `${whoIs(done)}'s tab is closed.` : "Counter sale recorded."}
               {done.change > 0 && ` Give back ${rupee(done.change)} change.`}
             </p>
           </div>

@@ -4,8 +4,8 @@ import { code, uid } from "./seed";
 import { checkCoupon, computeBill, round2, shopToday } from "./money";
 import { hashPassword } from "./auth";
 import { db, type Db, type Tx } from "./db";
-import { bills, coupons, expenses, meta, orders, products, sessions, settings, staffUsers, stockMovements, tables } from "./db/schema";
-import type { AdminState, Bill, StockLedger, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, StockMoveType, Table, TableCard, TableClose, TableView } from "./types";
+import { bills, coupons, expenses, meta, orders, products, sessions, settings, staffUsers, stockMovements } from "./db/schema";
+import type { AdminState, Bill, StockLedger, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, StockMoveType, TabClose, TabView } from "./types";
 
 /* Every read/write the app makes, with validation. Route handlers are thin wrappers.
    Writes run inside store.mutate(), which serializes them and rolls back on error. */
@@ -44,15 +44,17 @@ async function must<T>(rows: Promise<T[]>, what: string): Promise<T> {
     anything added to StaffUser later stays server-side until it is listed here. */
 const publicUser = (u: StaffUser): PublicUser => ({ id: u.id, name: u.name, mobile: u.mobile, email: u.email, createdAt: u.createdAt });
 
-async function tableByCode(q: Q, c: string) {
-  const t = await first(q.select().from(tables).where(eq(tables.code, String(c).toLowerCase())));
-  if (!t) throw new ApiError("This table's QR code is no longer active. Please ask our staff for help.", 404);
-  return t;
+/** A guest's mobile as the key to their tab. Unlike the optional phone on a counter bill, this one is required. */
+function phoneOf(v: unknown): string {
+  const p = mobile(v);
+  if (!p) throw new ApiError("Please enter a valid 10-digit mobile number.");
+  return p;
 }
 
-export async function openSession(q: Q, t: Table): Promise<Session | null> {
-  if (!t.sessionId) return null;
-  return first(q.select().from(sessions).where(and(eq(sessions.id, t.sessionId), eq(sessions.status, "open"))));
+/** The open tab for a mobile, if it has one. */
+export async function openSession(q: Q, phone: string): Promise<Session | null> {
+  if (!phone) return null;
+  return first(q.select().from(sessions).where(and(eq(sessions.customerPhone, phone), eq(sessions.status, "open"))));
 }
 
 /* ============================== customer side ============================== */
@@ -80,12 +82,12 @@ export function menuOf(all: Product[]): MenuItem[] {
 /** How long after a tab closes the guest's phone still gets the goodbye. */
 const CLOSE_WINDOW = 20 * 60_000;
 
-async function lastClose(q: Q, t: Table): Promise<TableClose | null> {
+async function lastClose(q: Q, phone: string): Promise<TabClose | null> {
   const [hit] = await q
     .select({ s: sessions, b: bills })
     .from(sessions)
     .leftJoin(bills, eq(bills.id, sessions.billId))
-    .where(and(eq(sessions.tableId, t.id), ne(sessions.status, "open"), sql`${sessions.closedAt} is not null`))
+    .where(and(eq(sessions.customerPhone, phone), ne(sessions.status, "open"), sql`${sessions.closedAt} is not null`))
     .orderBy(desc(sessions.closedAt))
     .limit(1);
   if (!hit || Date.now() - hit.s.closedAt! > CLOSE_WINDOW) return null;
@@ -96,35 +98,33 @@ async function lastClose(q: Q, t: Table): Promise<TableClose | null> {
 }
 
 /* Every query is a network round trip to the database, so a view is built as two
-   hops: the table, then everything else at once. */
-async function view(q: Q, t: Table): Promise<TableView> {
-  const sid = t.sessionId;
-  const [all, name, s, list, closed, cps] = await Promise.all([
+   hops: the tab, then everything else at once. A phone with no tab (or no phone
+   yet) just gets the menu. */
+async function view(q: Q, phone: string): Promise<TabView> {
+  const s = await openSession(q, phone);
+  const sid = s?.id;
+  const [all, name, list, closed, cps] = await Promise.all([
     q.select().from(products).orderBy(asc(products.createdAt), asc(products.id)),
     shopNameOf(q),
-    sid ? first(q.select().from(sessions).where(and(eq(sessions.id, sid), eq(sessions.status, "open")))) : Promise.resolve(null),
     sid ? q.select().from(orders).where(eq(orders.sessionId, sid)).orderBy(asc(orders.createdAt), asc(orders.no)) : Promise.resolve([] as Order[]),
-    sid ? Promise.resolve(null) : lastClose(q, t),
-    sid ? q.select().from(coupons) : Promise.resolve([]),
+    !s && phone ? lastClose(q, phone) : Promise.resolve(null),
+    s?.couponCode ? q.select().from(coupons) : Promise.resolve([]),
   ]);
-  const open = s ? list : [];
-  const live = open.filter((o) => o.status !== "cancelled");
+  const live = list.filter((o) => o.status !== "cancelled");
   const total = round2(live.reduce((a, o) => a + o.subtotal, 0));
   const cp = s?.couponCode ? cps.find((c) => c.code === s.couponCode) ?? null : null;
   const check = cp ? checkCoupon(cp, total) : null;
   const discount = cp && check?.ok ? computeBill({ items: live.flatMap((o) => o.items), coupon: cp, manualType: "amount", manualValue: 0, extra: 0 }).couponDiscount : 0;
   return {
-    table: { label: t.label, seats: t.seats, code: t.code },
     shopName: name,
     menu: menuOf(all),
-    closed: s ? null : closed ?? (sid ? await lastClose(q, t) : null),
+    closed,
     tab: s
       ? {
-          orders: open.map((o) => ({ no: o.no, items: o.items, status: o.status, subtotal: o.subtotal, createdAt: o.createdAt })),
+          orders: list.map((o) => ({ no: o.no, items: o.items, status: o.status, subtotal: o.subtotal, createdAt: o.createdAt })),
           total,
           billRequested: !!s.billRequestedAt,
-          name: s.customerName,
-          hasPhone: !!s.customerPhone,
+          name: s.customerName.split(" ")[0] ?? "",
           coupon: cp ? { code: cp.code, percent: cp.percent, discount, ok: !!check?.ok, reason: check && !check.ok ? check.reason : "" } : null,
           payable: round2(Math.max(0, total - discount)),
         }
@@ -136,14 +136,9 @@ async function shopNameOf(q: Q) {
   return (await first(q.select({ n: settings.shopName }).from(settings).where(eq(settings.id, 1))))?.n ?? "Cafe";
 }
 
-export function tableView(c: string) {
-  return read(async (q) => view(q, await tableByCode(q, c)));
-}
-
-/** The table directory the front door offers to a guest who couldn't scan the QR. */
-export async function tableList(): Promise<TableCard[]> {
-  const rows = await db.select({ label: tables.label, seats: tables.seats, code: tables.code }).from(tables);
-  return rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }));
+/** The menu, and the tab for this mobile if there is one open. A bad or missing number just gets the menu. */
+export function tabView(phone: unknown) {
+  return read(async (q) => view(q, mobile(phone) || ""));
 }
 
 /** One bill plus the shop's name, for the printable invoice page. Accepts the bill id or invoice number. */
@@ -154,13 +149,14 @@ export function billForInvoice(key: string): Promise<{ bill: Bill; shop: string 
   });
 }
 
-/** The shop's name, for pages that show it without loading a whole table. */
+/** The shop's name, for pages that show it without loading the whole menu. */
 export function shopName(): Promise<string> {
   return shopNameOf(db);
 }
 
-/** Validates the lines, takes stock, opens a tab if needed and files the order. */
-async function addOrder(tx: Tx, t: Table, a: Args, opts: { fromCustomer: boolean }): Promise<Order> {
+/** Validates the lines, takes stock, opens a tab if needed and files the order.
+    A guest names their mobile; staff may instead name an open tab by its id. */
+async function addOrder(tx: Tx, a: Args, opts: { fromCustomer: boolean }): Promise<Order> {
   const now = Date.now();
   const raw = Array.isArray(a.items) ? (a.items as Args[]) : [];
   if (raw.length > 60) throw new ApiError("That's a big order — please split it in two.");
@@ -182,26 +178,23 @@ async function addOrder(tx: Tx, t: Table, a: Args, opts: { fromCustomer: boolean
     items.push({ productId: p.id, name: p.name, price: p.price, qty: q });
   }
 
-  let s = await openSession(tx, t);
-  const name = str(a.name, 60);
-  const phone = mobile(a.phone);
-  if (phone === null) throw new ApiError("Please enter a valid 10-digit mobile number.");
-  if (opts.fromCustomer && !s && !name) throw new ApiError("Please tell us your name.");
-  if (opts.fromCustomer && !(s?.customerPhone || phone)) throw new ApiError("Please add your mobile number so we can send your bill.");
-
-  if (!s) {
-    const [created] = await tx
-      .insert(sessions)
-      .values({ id: uid(), tableId: t.id, status: "open", openedAt: now, closedAt: null, customerName: name, customerPhone: phone, guests: int(a.guests, 1, 40, t.seats), billRequestedAt: null, billId: null, couponCode: null })
-      .returning();
-    s = created;
-    await tx.update(tables).set({ sessionId: s.id }).where(eq(tables.id, t.id));
+  let s: Session | null;
+  const sid = opts.fromCustomer ? "" : str(a.sessionId, 40);
+  if (sid) {
+    s = await must(tx.select().from(sessions).where(and(eq(sessions.id, sid), eq(sessions.status, "open"))), "Tab");
   } else {
-    const patch: Partial<Session> = { billRequestedAt: null };
-    if (name && !s.customerName) patch.customerName = name;
-    if (phone && !s.customerPhone) patch.customerPhone = phone;
-    [s] = await tx.update(sessions).set(patch).where(eq(sessions.id, s.id)).returning();
+    const phone = phoneOf(a.phone);
+    s = await openSession(tx, phone);
+    if (!s) {
+      const name = str(a.name, 60);
+      if (opts.fromCustomer && !name) throw new ApiError("Please tell us your name.");
+      [s] = await tx
+        .insert(sessions)
+        .values({ id: uid(), status: "open", openedAt: now, closedAt: null, customerName: name, customerPhone: phone, billRequestedAt: null, billId: null, couponCode: null })
+        .returning();
+    }
   }
+  [s] = await tx.update(sessions).set({ billRequestedAt: null }).where(eq(sessions.id, s.id)).returning();
 
   const [seq] = await tx.update(meta).set({ orderSeq: sql`${meta.orderSeq} + 1` }).where(eq(meta.id, 1)).returning({ n: meta.orderSeq });
   const [o] = await tx
@@ -209,7 +202,6 @@ async function addOrder(tx: Tx, t: Table, a: Args, opts: { fromCustomer: boolean
     .values({
       id: uid(),
       no: seq.n,
-      tableId: t.id,
       sessionId: s.id,
       items,
       note: str(a.note, 240),
@@ -226,31 +218,30 @@ async function addOrder(tx: Tx, t: Table, a: Args, opts: { fromCustomer: boolean
   return o;
 }
 
-export function placeOrder(c: string, a: Args) {
+export function placeOrder(a: Args) {
   return mutate(async (tx) => {
-    const t = await tableByCode(tx, c);
-    const o = await addOrder(tx, t, a, { fromCustomer: true });
-    return { no: o.no, code: t.code };
-  }).then(async ({ no, code }) => ({ no, view: await tableView(code) }));
+    const o = await addOrder(tx, a, { fromCustomer: true });
+    return { no: o.no, phone: o.customerPhone };
+  }).then(async ({ no, phone }) => ({ no, view: await tabView(phone) }));
 }
 
-export function requestBill(c: string) {
+export function requestBill(raw: unknown) {
   return mutate(async (tx) => {
-    const t = await tableByCode(tx, c);
-    const s = await openSession(tx, t);
+    const phone = phoneOf(raw);
+    const s = await openSession(tx, phone);
     if (!s) throw new ApiError("There's nothing on your tab yet.");
     if (!s.billRequestedAt) await tx.update(sessions).set({ billRequestedAt: Date.now() }).where(eq(sessions.id, s.id));
-    return t.code;
-  }).then(async (code) => ({ view: await tableView(code) }));
+    return phone;
+  }).then(async (phone) => ({ view: await tabView(phone) }));
 }
 
 /** Puts a coupon on the guest's open tab. Usage is only counted when the bill is made. */
-export function applyCoupon(c: string, raw: unknown) {
+export function applyCoupon(raw: unknown, couponRaw: unknown) {
   return mutate(async (tx) => {
-    const t = await tableByCode(tx, c);
-    const s = await openSession(tx, t);
+    const phone = phoneOf(raw);
+    const s = await openSession(tx, phone);
     if (!s) throw new ApiError("Order something first, then apply your coupon.");
-    const cc = str(raw, 24).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const cc = str(couponRaw, 24).toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (!cc) throw new ApiError("Enter a coupon code.");
     const cp = await first(tx.select().from(coupons).where(eq(coupons.code, cc)));
     if (!cp) throw new ApiError(`Coupon ${cc} doesn't exist.`);
@@ -259,27 +250,26 @@ export function applyCoupon(c: string, raw: unknown) {
     const ok = checkCoupon(cp, sub);
     if (!ok.ok) throw new ApiError(`Coupon ${cp.code}: ${ok.reason}.`);
     await tx.update(sessions).set({ couponCode: cp.code }).where(eq(sessions.id, s.id));
-    return t.code;
-  }).then(async (code) => ({ view: await tableView(code) }));
+    return phone;
+  }).then(async (phone) => ({ view: await tabView(phone) }));
 }
 
-export function removeCoupon(c: string) {
+export function removeCoupon(raw: unknown) {
   return mutate(async (tx) => {
-    const t = await tableByCode(tx, c);
-    const s = await openSession(tx, t);
+    const phone = phoneOf(raw);
+    const s = await openSession(tx, phone);
     if (s) await tx.update(sessions).set({ couponCode: null }).where(eq(sessions.id, s.id));
-    return t.code;
-  }).then(async (code) => ({ view: await tableView(code) }));
+    return phone;
+  }).then(async (phone) => ({ view: await tabView(phone) }));
 }
 
 /* ================================ admin side ================================ */
 
 export async function adminState(): Promise<AdminState> {
-  const [m, st, prods, tabs, sess, ords, bls, cps, us, exps] = await Promise.all([
+  const [m, st, prods, sess, ords, bls, cps, us, exps] = await Promise.all([
     db.select().from(meta).where(eq(meta.id, 1)),
     db.select().from(settings).where(eq(settings.id, 1)),
     db.select().from(products).orderBy(asc(products.createdAt), asc(products.id)),
-    db.select().from(tables).orderBy(asc(tables.createdAt), asc(tables.id)),
     db.select().from(sessions).orderBy(asc(sessions.openedAt), asc(sessions.id)),
     db.select().from(orders).orderBy(asc(orders.createdAt), asc(orders.no)),
     db.select().from(bills).orderBy(asc(bills.createdAt), asc(bills.id)),
@@ -292,7 +282,6 @@ export async function adminState(): Promise<AdminState> {
     seq: { order: m[0]?.orderSeq ?? 0 },
     settings: { shopName: st[0]?.shopName ?? "Cafe", publicUrl: st[0]?.publicUrl ?? "" },
     products: prods,
-    tables: tabs,
     sessions: sess,
     orders: ords,
     bills: bls,
@@ -455,13 +444,11 @@ async function saveCoupon(tx: Tx, a: Args) {
 
 async function createBill(tx: Tx, a: Args): Promise<Bill> {
   const now = Date.now();
-  const source = a.source === "counter" ? "counter" : "table";
-  let t: Table | null = null;
+  const source = a.source === "counter" ? "counter" : "tab";
   let s: Session | null = null;
-  if (source === "table") {
-    t = await must(tx.select().from(tables).where(eq(tables.id, str(a.tableId, 40))), "Table");
-    s = await openSession(tx, t);
-    if (!s) throw new ApiError(`${t.label} has no open tab to bill.`);
+  if (source === "tab") {
+    s = await first(tx.select().from(sessions).where(and(eq(sessions.id, str(a.sessionId, 40)), eq(sessions.status, "open"))));
+    if (!s) throw new ApiError("That tab is no longer open — it may have just been billed.", 409);
   }
 
   const allProducts = await tx.select({ id: products.id }).from(products);
@@ -509,7 +496,7 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
   const phone = mobile(a.customerPhone);
   if (phone === null) throw new ApiError("Customer mobile should be a 10-digit number.");
 
-  // Stock: table orders already took stock when they were placed, so only the
+  // Stock: tab orders already took stock when they were placed, so only the
   // difference between what's billed and what was ordered moves stock now.
   const delta = new Map<string, number>();
   for (const it of items) if (it.productId) delta.set(it.productId, (delta.get(it.productId) ?? 0) + it.qty);
@@ -537,8 +524,6 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
       id: uid(),
       invoiceNo,
       source,
-      tableId: t?.id ?? null,
-      tableLabel: t?.label ?? "Counter",
       sessionId: s?.id ?? null,
       customerName: str(a.customerName, 60) || s?.customerName || (source === "counter" ? "Walk-in customer" : ""),
       customerPhone: phone || s?.customerPhone || "",
@@ -567,22 +552,15 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
     .returning();
   if (bill.couponCode && coupon) await tx.update(coupons).set({ used: sql`${coupons.used} + 1` }).where(eq(coupons.id, coupon.id));
 
-  if (s && t) {
-    await tx.update(sessions).set({ status: "closed", closedAt: now, billId: bill.id, customerName: bill.customerName, customerPhone: bill.customerPhone }).where(eq(sessions.id, s.id));
-    await tx.update(tables).set({ sessionId: null }).where(eq(tables.id, t.id));
+  if (s) {
+    // the tab's phone is its key, so a different one typed at billing goes on the bill only
+    await tx.update(sessions).set({ status: "closed", closedAt: now, billId: bill.id, customerName: bill.customerName }).where(eq(sessions.id, s.id));
     await tx
       .update(orders)
       .set({ status: "served", updatedAt: now })
       .where(and(eq(orders.sessionId, s.id), inArray(orders.status, ["new", "preparing"])));
   }
   return bill;
-}
-
-async function freshCode(tx: Tx) {
-  let c = "";
-  do c = code(6).toLowerCase();
-  while (await first(tx.select({ id: tables.id }).from(tables).where(eq(tables.code, c))));
-  return c;
 }
 
 export function adminOp(op: string, a: Args) {
@@ -623,71 +601,40 @@ export function adminOp(op: string, a: Args) {
         return null;
       }
 
-      /* ---------- tables ---------- */
-      case "table.save": {
-        const label = str(a.label, 24);
-        const seats = int(a.seats, 1, 40, 4);
-        if (!label) throw new ApiError("Give the table a name, like T7 or Patio 2.");
-        const clash = (await tx.select().from(tables)).find((t) => t.label.toLowerCase() === label.toLowerCase() && t.id !== id);
-        if (clash) throw new ApiError(`${clash.label} already exists.`);
-        if (id) {
-          await must(tx.select().from(tables).where(eq(tables.id, id)), "Table");
-          const [t] = await tx.update(tables).set({ label, seats }).where(eq(tables.id, id)).returning();
-          return t;
+      /* ---------- tabs ---------- */
+      case "tab.clear": {
+        const s = await must(tx.select().from(sessions).where(and(eq(sessions.id, id), eq(sessions.status, "open"))), "Tab");
+        await tx.update(sessions).set({ status: "void", closedAt: now }).where(eq(sessions.id, s.id));
+        const live = await tx
+          .select()
+          .from(orders)
+          .where(and(eq(orders.sessionId, s.id), inArray(orders.status, ["new", "preparing"])));
+        if (live.length) {
+          await tx.update(orders).set({ status: "cancelled", updatedAt: now }).where(inArray(orders.id, live.map((o) => o.id)));
+          await restock(tx, live.flatMap((o) => o.items), { type: "cancelled_order", ref: `${s.customerName || s.customerPhone} cleared`, note: "Tab cleared by staff" });
         }
-        const [t] = await tx.insert(tables).values({ id: uid(), label, seats, code: await freshCode(tx), sessionId: null, createdAt: now }).returning();
-        return t;
-      }
-      case "table.delete": {
-        const t = await must(tx.select().from(tables).where(eq(tables.id, id)), "Table");
-        if (await openSession(tx, t)) throw new ApiError(`${t.label} has an open tab. Bill it or clear it before deleting.`);
-        await tx.delete(tables).where(eq(tables.id, t.id));
-        return null;
-      }
-      case "table.rotate": {
-        await must(tx.select().from(tables).where(eq(tables.id, id)), "Table");
-        const [t] = await tx.update(tables).set({ code: await freshCode(tx) }).where(eq(tables.id, id)).returning();
-        return t;
-      }
-      case "table.clear": {
-        const t = await must(tx.select().from(tables).where(eq(tables.id, id)), "Table");
-        const s = await openSession(tx, t);
-        if (s) {
-          await tx.update(sessions).set({ status: "void", closedAt: now }).where(eq(sessions.id, s.id));
-          const live = await tx
-            .select()
-            .from(orders)
-            .where(and(eq(orders.sessionId, s.id), inArray(orders.status, ["new", "preparing"])));
-          if (live.length) {
-            await tx.update(orders).set({ status: "cancelled", updatedAt: now }).where(inArray(orders.id, live.map((o) => o.id)));
-            await restock(tx, live.flatMap((o) => o.items), { type: "cancelled_order", ref: `${t.label} cleared`, note: "Tab cleared by staff" });
-          }
-        }
-        await tx.update(tables).set({ sessionId: null }).where(eq(tables.id, t.id));
         return null;
       }
       case "session.update": {
         const s = await must(tx.select().from(sessions).where(eq(sessions.id, id)), "Tab");
-        const phone = mobile(a.customerPhone);
-        if (phone === null) throw new ApiError("Mobile should be a 10-digit number.");
-        const [u] = await tx
-          .update(sessions)
-          .set({ customerName: str(a.customerName, 60), customerPhone: phone, guests: int(a.guests, 1, 40, s.guests) })
-          .where(eq(sessions.id, s.id))
-          .returning();
+        const phone = phoneOf(a.customerPhone);
+        const clash = s.status === "open" && phone !== s.customerPhone ? await openSession(tx, phone) : null;
+        if (clash) throw new ApiError("That number already has an open tab.");
+        const customerName = str(a.customerName, 60);
+        const [u] = await tx.update(sessions).set({ customerName, customerPhone: phone }).where(eq(sessions.id, s.id)).returning();
+        await tx.update(orders).set({ customerName, customerPhone: phone }).where(eq(orders.sessionId, s.id));
         return u;
       }
 
       /* ---------- orders ---------- */
       case "order.create": {
-        const t = await must(tx.select().from(tables).where(eq(tables.id, str(a.tableId, 40))), "Table");
-        return addOrder(tx, t, a, { fromCustomer: false });
+        return addOrder(tx, a, { fromCustomer: false });
       }
       case "order.status": {
         const o = await must(tx.select().from(orders).where(eq(orders.id, id)), "Order");
         const next = a.status as OrderStatus;
         if (!["new", "preparing", "served", "cancelled"].includes(next)) throw new ApiError("Unknown status.");
-        if (o.status === "cancelled" && next !== "cancelled") throw new ApiError("A cancelled order can't be reopened — ask the table to order again.");
+        if (o.status === "cancelled" && next !== "cancelled") throw new ApiError("A cancelled order can't be reopened — ask the guest to order again.");
         const s = await first(tx.select().from(sessions).where(eq(sessions.id, o.sessionId)));
         if (s && s.status !== "open") throw new ApiError("This tab is already closed.");
         if (next === "cancelled" && o.status !== "cancelled") await restock(tx, o.items, { type: "cancelled_order", ref: `Order #${o.no}`, note: "Order cancelled" });

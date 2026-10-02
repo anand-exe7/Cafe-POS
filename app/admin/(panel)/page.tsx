@@ -1,8 +1,8 @@
-import TablesPage from "../_ui/TablesPage";
+import TabsPage from "../_ui/TabsPage";
 
-export const metadata = { title: "Tables" };
+export const metadata = { title: "Open tabs" };
 
 export default async function Page({ searchParams }: PageProps<"/admin">) {
-  const { table } = await searchParams;
-  return <TablesPage focus={typeof table === "string" ? table : undefined} />;
+  const { tab } = await searchParams;
+  return <TabsPage focus={typeof tab === "string" ? tab : undefined} />;
 }

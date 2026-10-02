@@ -6,11 +6,11 @@ import { useAdmin } from "./Store";
 import { Btn, Empty, Icon, Page, PageHead, ago, cx, fmtTime } from "./kit";
 
 /* ---------------- live queue ---------------- */
-/* A ticket left this long without moving gets flagged, so a table that has been
+/* A ticket left this long without moving gets flagged, so a guest who has been
    waiting stands out on a glance across the counter. */
 const WAIT_WARN = 10 * 60 * 1000;
 
-function Ticket({ o, table, now, onMove }: { o: Order; table: string; now: number; onMove: (next: Order["status"]) => void }) {
+function Ticket({ o, now, onMove }: { o: Order; now: number; onMove: (next: Order["status"]) => void }) {
   const isNew = o.status === "new";
   const late = now - o.createdAt > WAIT_WARN;
   return (
@@ -18,8 +18,8 @@ function Ticket({ o, table, now, onMove }: { o: Order; table: string; now: numbe
       <header className="flex items-start gap-3">
         <span className={cx("adm-num grid h-11 min-w-11 shrink-0 place-items-center rounded-xl px-2 text-[15px] font-extrabold", isNew ? "bg-red-600 text-white" : "bg-amber-100 text-amber-900")}>#{o.no}</span>
         <div className="min-w-0 flex-1">
-          <b className="adm-num block text-[16px] font-extrabold leading-tight text-slate-900">{table}</b>
-          <span className="block truncate text-[12px] text-slate-500">{o.customerName || "Guest"}</span>
+          <b className="block truncate text-[16px] font-extrabold leading-tight text-slate-900">{o.customerName || "Guest"}</b>
+          <span className="adm-num block truncate text-[12px] text-slate-500">{o.customerPhone}</span>
         </div>
         <span
           className={cx("adm-num shrink-0 rounded-md px-2 py-1 text-[11px] font-bold", late ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500")}
@@ -59,7 +59,7 @@ function Ticket({ o, table, now, onMove }: { o: Order; table: string; now: numbe
 }
 
 export default function QueuePage() {
-  const { s, act, confirm, tableLabel, now } = useAdmin();
+  const { s, act, confirm, now } = useAdmin();
 
   /* Only what the guests' own phones sent, oldest first — the kitchen works the
      top of the list down. Orders the counter puts in are already in hand, so
@@ -70,7 +70,7 @@ export default function QueuePage() {
   );
 
   const move = async (o: Order, next: Order["status"]) => {
-    if (next === "cancelled" && !(await confirm({ title: `Cancel order #${o.no}?`, body: "Its items go back into stock and drop off the table's bill.", ok: "Cancel order", danger: true }))) return;
+    if (next === "cancelled" && !(await confirm({ title: `Cancel order #${o.no}?`, body: "Its items go back into stock and drop off the tab's bill.", ok: "Cancel order", danger: true }))) return;
     act("order.status", { id: o.id, status: next });
   };
 
@@ -81,14 +81,14 @@ export default function QueuePage() {
         bar
         sub={
           <>
-            Everything the tables have sent in, oldest first. The board keeps itself up to date — leave it open on the counter screen.
+            Everything guests have sent in, oldest first. The board keeps itself up to date — leave it open on the counter screen.
           </>
         }
       />
 
       {!queue.length ? (
         <Empty icon="check" title="All caught up">
-          Nothing waiting and nothing on the pass. An order appears here the moment a table sends one.
+          Nothing waiting and nothing on the pass. An order appears here the moment a guest sends one.
         </Empty>
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
@@ -104,7 +104,7 @@ export default function QueuePage() {
                 {list.length ? (
                   <div className="grid gap-3">
                     {list.map((o) => (
-                      <Ticket key={o.id} o={o} table={tableLabel(o.tableId)} now={now} onMove={(next) => move(o, next)} />
+                      <Ticket key={o.id} o={o} now={now} onMove={(next) => move(o, next)} />
                     ))}
                   </div>
                 ) : (

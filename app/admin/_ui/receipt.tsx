@@ -12,7 +12,7 @@ export function billText(b: Bill, shop: string, publicUrl = "") {
     `*${shop}*`,
     `Invoice: ${b.invoiceNo}`,
     `Date: ${fmtDateTime(b.createdAt)}`,
-    b.source === "table" ? `Table: ${b.tableLabel}` : "Counter bill",
+    b.source === "tab" ? "Order from phone" : "Counter bill",
     b.customerName ? `Customer: ${b.customerName}` : "",
     "------------------------------",
     ...b.items.map((i) => `${i.qty} × ${i.name} — ${rupee(i.price * i.qty)}`),
@@ -88,8 +88,8 @@ function Sheet({ b, shop, size }: { b: Bill; shop: string; size: "A3" | "A4" | "
           {b.customerPhone && <p>{b.customerPhone}</p>}
         </div>
         <div className="inv__r">
-          <span>{b.source === "table" ? "Table" : "Counter"}</span>
-          <b>{b.source === "table" ? b.tableLabel : "Walk-in"}</b>
+          <span>{b.source === "tab" ? "Customer" : "Counter"}</span>
+          <b>{b.customerPhone || "Walk-in"}</b>
           <p>Paid by {PAY[b.payment]}</p>
         </div>
       </section>
@@ -184,7 +184,7 @@ function Thermal({ b, shop, roll }: { b: Bill; shop: string; roll: 2 | 3 }) {
       <hr />
       <div className="row">
         <span>{b.invoiceNo}</span>
-        <span>{b.source === "table" ? `Table ${b.tableLabel}` : "Counter"}</span>
+        <span>{b.source === "tab" ? "Customer tab" : "Counter"}</span>
       </div>
       <div>{fmtDateTime(b.createdAt)}</div>
       {b.customerName && <div>{b.customerName}{b.customerPhone ? ` · ${b.customerPhone}` : ""}</div>}

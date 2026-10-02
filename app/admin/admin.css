@@ -247,7 +247,7 @@ html:has(.adm) {
   }
 }
 
-/* QR table cards: two per row on A4 */
+/* QR cards: two per row on A4 */
 .qr-sheet {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -268,11 +268,11 @@ html:has(.adm) {
   font-style: italic;
   font-size: 16pt;
 }
-.qr-card__table {
-  font-size: 40pt;
+.qr-card__lead {
+  font-size: 30pt;
   line-height: 1;
 }
-.qr-card__table small {
+.qr-card__lead small {
   display: block;
   font: 600 8pt/1.4 var(--body), sans-serif;
   letter-spacing: 0.3em;

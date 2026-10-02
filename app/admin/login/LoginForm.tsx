@@ -37,7 +37,7 @@ export default function LoginForm() {
           <circle cx="23" cy="20" r="6.5" fill="#b81d33" />
         </svg>
         <h1 className="adm-title mt-4 text-[32px] leading-none text-slate-900">Admin sign in</h1>
-        <p className="mt-1 text-[14px] text-slate-500">Chef Loving Cakes · tables, orders &amp; billing</p>
+        <p className="mt-1 text-[14px] text-slate-500">Chef Loving Cakes · orders &amp; billing</p>
         <div className="mt-6 space-y-4">
           <Field label="Password">
             <input type="password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" autoFocus required minLength={1} />

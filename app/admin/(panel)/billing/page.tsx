@@ -3,7 +3,7 @@ import BillingPage from "../../_ui/BillingPage";
 export const metadata = { title: "Billing" };
 
 export default async function Page({ searchParams }: PageProps<"/admin/billing">) {
-  const { table } = await searchParams;
-  const tableId = typeof table === "string" ? table : undefined;
-  return <BillingPage key={tableId ?? "none"} tableId={tableId} />;
+  const { tab } = await searchParams;
+  const sessionId = typeof tab === "string" ? tab : undefined;
+  return <BillingPage key={sessionId ?? "none"} sessionId={sessionId} />;
 }

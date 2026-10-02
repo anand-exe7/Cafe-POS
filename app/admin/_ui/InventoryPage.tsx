@@ -177,7 +177,7 @@ export default function InventoryPage() {
     <Page>
       <PageHead
         title="Inventory"
-        sub="Only products that are on the menu show up for guests at the tables."
+        sub="Only products that are on the menu show up on the guest menu."
         right={
           <span className="flex flex-wrap gap-2">
             <Btn icon="edit" onClick={() => setManageCats(true)}>
@@ -292,7 +292,7 @@ export default function InventoryPage() {
           </table>
           {!list.length && (
             <Empty icon="box" title={s.products.length ? "No products match" : "Your inventory is empty"}>
-              {s.products.length ? "Try another filter." : "Add products — they appear on the table menu straight away."}
+              {s.products.length ? "Try another filter." : "Add products — they appear on the guest menu straight away."}
             </Empty>
           )}
         </div>

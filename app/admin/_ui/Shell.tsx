@@ -10,7 +10,7 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin/billing", label: "Billing", icon: "billing" },
   { href: "/admin/orders", label: "Orders", icon: "orders" },
   { href: "/admin/analytics", label: "Analytics", icon: "chart" },
-  { href: "/admin", label: "Tables", icon: "tables" },
+  { href: "/admin", label: "Open tabs", icon: "tables" },
   { href: "/admin/queue", label: "Live queue", icon: "utensils" },
   { href: "/admin/inventory", label: "Inventory", icon: "box" },
   { href: "/admin/inventory/movements", label: "Stock movement", icon: "list" },
@@ -35,14 +35,14 @@ function Settings({ onClose }: { onClose: () => void }) {
 
   const saveUrl = async () => {
     const r = await act("settings.update", { publicUrl: url });
-    if (r.ok) toast({ kind: "ok", title: "Saved. Re-print QR cards if the address changed." });
+    if (r.ok) toast({ kind: "ok", title: "Saved. Re-print the QR code if the address changed." });
   };
 
   return (
     <Modal open onClose={onClose} title="Settings">
       <div className="space-y-6">
         <div>
-          <Field label="Public address for QR codes" hint="The address phones use to reach this app, e.g. https://order.cheflovingcakes.in or http://192.168.1.20:3000. Leave blank to use the address you're on now.">
+          <Field label="Public address for the QR code" hint="The address phones use to reach this app, e.g. https://order.cheflovingcakes.in or http://192.168.1.20:3000. Leave blank to use the address you're on now.">
             <input className={inputCls} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
           </Field>
           <Btn kind="dark" className="mt-3" onClick={saveUrl}>
@@ -69,11 +69,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const fresh = s.orders.filter((o) => o.source === "customer" && o.status === "new").length;
   const cooking = s.orders.filter((o) => o.source === "customer" && o.status === "preparing").length;
   const billReq = floor.filter((f) => f.billRequested).length;
-  const busy = floor.filter((f) => f.session).length;
+  const busy = floor.length;
   const low = s.products.filter((p) => p.active && p.stock !== null && p.stock <= p.lowAt).length;
 
   const badge: Record<string, React.ReactNode> = {
-    "/admin": busy ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{busy}/{s.tables.length}</span> : null,
+    "/admin": busy ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{busy}</span> : null,
     "/admin/queue": fresh ? (
       <span className="adm-pulse grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white">{fresh}</span>
     ) : cooking ? (

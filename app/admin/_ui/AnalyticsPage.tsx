@@ -9,7 +9,7 @@ import { useAdmin } from "./Store";
 import { useLedger } from "./ledger";
 import { Badge, Card, Empty, Kpi, Page, PageHead, Pills, SearchBox, Tabs, cx, fmtDate, fmtTime } from "./kit";
 
-type Tab = "revenue" | "today" | "products" | "tables" | "coupons";
+type Tab = "revenue" | "today" | "products" | "customers" | "coupons";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -52,10 +52,10 @@ function Columns({ data, height = 200, empty }: { data: { label: string; full: s
   );
 }
 
-function SourceSplit({ table, counter }: { table: number; counter: number }) {
-  const max = Math.max(table, counter, 1);
+function SourceSplit({ tab, counter }: { tab: number; counter: number }) {
+  const max = Math.max(tab, counter, 1);
   const rows = [
-    { label: "Table (QR)", n: table, text: "text-red-600", bar: "bg-red-600" },
+    { label: "Customer tabs (QR)", n: tab, text: "text-red-600", bar: "bg-red-600" },
     { label: "Counter", n: counter, text: "text-emerald-600", bar: "bg-emerald-500" },
   ];
   return (
@@ -144,7 +144,7 @@ export default function AnalyticsPage() {
     <Page>
       <PageHead
         title="Analytics"
-        sub="Real-time store & table insights"
+        sub="Real-time store & customer insights"
         right={
           <div className="flex flex-col items-end gap-2">
             <Pills
@@ -186,7 +186,7 @@ export default function AnalyticsPage() {
           { v: "revenue", t: "Revenue" },
           { v: "today", t: "Today's sales" },
           { v: "products", t: "Products" },
-          { v: "tables", t: "Tables" },
+          { v: "customers", t: "Customers" },
           { v: "coupons", t: "Coupons" },
         ]}
       />
@@ -196,20 +196,20 @@ export default function AnalyticsPage() {
         <div className="adm-in space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi label="Net earnings" value={rupee(net)} hint="Revenue − expenses" icon="rupee" tone={net >= 0 ? "emerald" : "red"} />
-            <Kpi label="Total revenue" value={rupee(sum.revenue)} hint="Tables + counter combined" icon="rupee" tone="emerald" />
+            <Kpi label="Total revenue" value={rupee(sum.revenue)} hint="Customer tabs + counter combined" icon="rupee" tone="emerald" />
             <Kpi label="Total expenses" value={rupee(expensesTotal)} hint="From the Expenses tab" icon="bag" tone="rose" />
             <Kpi label="Discounts given" value={rupee(sum.discount)} hint={`${sum.discounted} discounted bills`} icon="coupon" tone="violet" />
           </div>
           <p className="rounded-xl border border-slate-100 bg-white px-4 py-2.5 text-center text-[12.5px] font-semibold text-slate-500">
-            Calculation: <b className="text-slate-800">Table + Counter revenue</b> − <b className="text-slate-800">Expenses</b> = <b className={net >= 0 ? "text-emerald-600" : "text-red-600"}>{rupee(net)}</b>
+            Calculation: <b className="text-slate-800">Tab + Counter revenue</b> − <b className="text-slate-800">Expenses</b> = <b className={net >= 0 ? "text-emerald-600" : "text-red-600"}>{rupee(net)}</b>
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi label="Completed bills" value={sum.count} hint="Table + counter bills" icon="billing" tone="amber" />
-            <Kpi label="Table revenue" value={rupee(sum.tableRev)} hint="QR dine-in tabs" icon="utensils" tone="sky" />
+            <Kpi label="Completed bills" value={sum.count} hint="Tab + counter bills" icon="billing" tone="amber" />
+            <Kpi label="Tab revenue" value={rupee(sum.tabRev)} hint="Guests who ordered from their phone" icon="utensils" tone="sky" />
             <Kpi label="Counter revenue" value={rupee(sum.counterRev)} hint="Walk-in counter sales" icon="bag" tone="violet" />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <Kpi label="Table bills" value={sum.tableN} hint="Dine-in tabs settled" icon="tables" tone="rose" />
+            <Kpi label="Tab bills" value={sum.tabN} hint="Customer tabs settled" icon="tables" tone="rose" />
             <Kpi label="Counter bills" value={sum.counterN} hint="Walk-in bills" icon="bag" tone="sky" />
             <Kpi label="Total items sold" value={sum.items} hint="From completed bills" icon="box" tone="violet" />
             <Kpi label="Avg order value" value={rupee(Math.round(sum.aov))} hint="Per completed bill" icon="zap" tone="orange" />
@@ -248,7 +248,7 @@ export default function AnalyticsPage() {
             </div>
             <div className="space-y-5">
               <Card title="Order Source">
-                <SourceSplit table={sum.tableN} counter={sum.counterN} />
+                <SourceSplit tab={sum.tabN} counter={sum.counterN} />
               </Card>
               <Card title="Payment mode" right={pay.splitN ? <span className="text-[12px] text-slate-500">{pay.splitN} split bill{pay.splitN === 1 ? "" : "s"}</span> : undefined}>
                 <dl className="space-y-2 text-[13px]">
@@ -340,7 +340,7 @@ export default function AnalyticsPage() {
                             <span className="block text-[11px] font-normal text-slate-400">{fmtTime(b.createdAt)}</span>
                           </td>
                           <td className={cx(td, "text-slate-700")}>{b.customerPhone || "—"}</td>
-                          <td className={td}>{b.source === "table" ? <Badge tone="red">Table {b.tableLabel}</Badge> : <Badge tone="green">Counter</Badge>}</td>
+                          <td className={td}>{b.source === "tab" ? <Badge tone="red">{b.customerName || b.customerPhone || "Tab"}</Badge> : <Badge tone="green">Counter</Badge>}</td>
                           <td className={cx(td, "text-slate-700")}>{b.itemCount}</td>
                           <td className={cx(td, "text-right font-bold text-slate-900")}>{rupee(b.total)}</td>
                         </tr>
@@ -364,7 +364,7 @@ export default function AnalyticsPage() {
                 </div>
               </Card>
               <Card title={<span className="text-[14px] uppercase tracking-[0.14em] text-slate-900">Today&apos;s channel split</span>}>
-                {today.length ? <SourceSplit table={tsum.tableN} counter={tsum.counterN} /> : <p className="py-8 text-center text-[14px] text-slate-600">No sales today.</p>}
+                {today.length ? <SourceSplit tab={tsum.tabN} counter={tsum.counterN} /> : <p className="py-8 text-center text-[14px] text-slate-600">No sales today.</p>}
               </Card>
               <Card title={<span className="text-[14px] uppercase tracking-[0.14em] text-slate-900">Today&apos;s top items</span>}>
                 <TopItems bills={today} empty="No items sold today." />
@@ -377,8 +377,8 @@ export default function AnalyticsPage() {
       {/* ============ PRODUCTS ============ */}
       {tab === "products" && <ProductsTab bills={inPeriod} q={q} setQ={setQ} />}
 
-      {/* ============ TABLES ============ */}
-      {tab === "tables" && <TablesTab bills={inPeriod} />}
+      {/* ============ CUSTOMERS ============ */}
+      {tab === "customers" && <CustomersTab bills={inPeriod} />}
 
       {/* ============ COUPONS ============ */}
       {tab === "coupons" && (
@@ -534,60 +534,65 @@ function ProductsTab({ bills, q, setQ }: { bills: Bill[]; q: string; setQ: (v: s
   );
 }
 
-function TablesTab({ bills }: { bills: Bill[] }) {
+function CustomersTab({ bills }: { bills: Bill[] }) {
   const { s } = useAdmin();
-  const tbills = bills.filter((b) => b.source === "table");
-  const rows = s.tables
-    .map((t) => {
-      const mine = tbills.filter((b) => b.tableId === t.id);
+  const tbills = bills.filter((b) => b.source === "tab");
+  /* A customer is a mobile number; counter walk-ins without one aren't grouped. */
+  const byPhone = new Map<string, Bill[]>();
+  for (const b of bills) if (b.customerPhone) byPhone.set(b.customerPhone, [...(byPhone.get(b.customerPhone) ?? []), b]);
+  const rows = [...byPhone.entries()]
+    .map(([phone, mine]) => {
       const revenue = mine.reduce((a, b) => a + b.total, 0);
-      const durations = mine
-        .map((b) => {
-          const sess = s.sessions.find((x) => x.id === b.sessionId);
-          return sess ? b.createdAt - sess.openedAt : null;
-        })
-        .filter((x): x is number => x !== null);
       return {
-        t,
+        phone,
+        name: mine.find((b) => b.customerName)?.customerName ?? "",
         visits: mine.length,
         revenue,
-        avg: mine.length ? revenue / mine.length : 0,
-        mins: durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length / 60000) : null,
-        last: mine.length ? Math.max(...mine.map((b) => b.createdAt)) : null,
+        avg: revenue / mine.length,
+        last: Math.max(...mine.map((b) => b.createdAt)),
       };
     })
     .sort((a, b) => b.revenue - a.revenue);
   const max = rows[0]?.revenue || 1;
   const revenue = tbills.reduce((a, b) => a + b.total, 0);
-  const allMins = rows.filter((r) => r.mins !== null);
+  const durations = tbills
+    .map((b) => {
+      const sess = s.sessions.find((x) => x.id === b.sessionId);
+      return sess ? b.createdAt - sess.openedAt : null;
+    })
+    .filter((x): x is number => x !== null);
   return (
     <div className="adm-in space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label="Table revenue" value={rupee(revenue)} hint="Dine-in bills in the period" icon="rupee" tone="emerald" />
-        <Kpi label="Visits" value={tbills.length} hint="Tabs settled" icon="users" tone="sky" />
-        <Kpi label="Avg spend / visit" value={rupee(tbills.length ? Math.round(revenue / tbills.length) : 0)} hint="Per settled tab" icon="zap" tone="orange" />
-        <Kpi label="Avg time at table" value={allMins.length ? `${Math.round(allMins.reduce((a, r) => a + (r.mins ?? 0), 0) / allMins.length)} min` : "—"} hint="First order → bill" icon="clock" tone="violet" />
+        <Kpi label="Customers" value={rows.length} hint="Different mobiles billed" icon="users" tone="sky" />
+        <Kpi label="Repeat customers" value={rows.filter((r) => r.visits > 1).length} hint="Came back in the period" icon="zap" tone="orange" />
+        <Kpi label="Avg spend / visit" value={rupee(tbills.length ? Math.round(revenue / tbills.length) : 0)} hint="Per settled tab" icon="rupee" tone="emerald" />
+        <Kpi label="Avg time on a tab" value={durations.length ? `${Math.round(durations.reduce((a, b) => a + b, 0) / durations.length / 60000)} min` : "—"} hint="First order → bill" icon="clock" tone="violet" />
       </div>
-      <Card title="Revenue by table">
-        {!s.tables.length ? (
-          <Empty icon="tables" title="No tables yet" />
+      <Card title="Top customers">
+        {!rows.length ? (
+          <Empty icon="users" title="No customers yet">
+            Bills that carry a mobile number show up here.
+          </Empty>
         ) : (
           <div className="overflow-x-auto adm-scroll">
             <table className="w-full min-w-[720px]">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className={th}>Table</th>
+                  <th className={th}>Customer</th>
                   <th className={cx(th, "w-[30%]")}>Revenue</th>
                   <th className={cx(th, "text-right")}>Visits</th>
                   <th className={cx(th, "text-right")}>Avg / visit</th>
-                  <th className={cx(th, "text-right")}>Avg time</th>
                   <th className={cx(th, "text-right")}>Last visit</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.t.id} className="border-b border-slate-100 last:border-0">
-                    <td className={cx(td, "adm-num text-[15px] font-extrabold text-slate-900")}>{r.t.label}</td>
+                  <tr key={r.phone} className="border-b border-slate-100 last:border-0">
+                    <td className={td}>
+                      <b className="block text-slate-900">{r.name || "Guest"}</b>
+                      <span className="adm-num text-[12px] text-slate-500">{r.phone}</span>
+                    </td>
                     <td className={td}>
                       <div className="flex items-center gap-3">
                         <b className="adm-num w-24 shrink-0 text-slate-900">{rupee(r.revenue)}</b>
@@ -598,8 +603,7 @@ function TablesTab({ bills }: { bills: Bill[] }) {
                     </td>
                     <td className={cx(td, "text-right font-semibold")}>{r.visits}</td>
                     <td className={cx(td, "text-right")}>{rupee(Math.round(r.avg))}</td>
-                    <td className={cx(td, "text-right text-slate-600")}>{r.mins !== null ? `${r.mins} min` : "—"}</td>
-                    <td className={cx(td, "text-right text-slate-500")}>{r.last ? fmtDate(r.last) : "—"}</td>
+                    <td className={cx(td, "text-right text-slate-500")}>{fmtDate(r.last)}</td>
                   </tr>
                 ))}
               </tbody>

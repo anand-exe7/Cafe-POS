@@ -1,23 +1,23 @@
 # Chef Loving — Cafe POS
 
-A point-of-sale and table-ordering app for a cafe. Guests scan a QR code at their table and order from their phone; staff run the floor, billing, inventory and reports from an admin panel.
+A point-of-sale and phone-ordering app for a cafe. Guests scan the shop QR code and order from their phone, identified by their mobile number (no tables); staff run the floor, billing, inventory and reports from an admin panel.
 
 **Stack:** Next.js 16 (App Router, Turbopack) · React 19 · Tailwind CSS 4 · Postgres on Supabase · Drizzle ORM
 
 ## What it does
 
-### For guests — `/t/<code>`
-- Scan the table QR to open the menu. Orders reach the admin instantly.
+### For guests — `/`
+- Scan the shop QR (or open the link) to see the menu. The first order asks for a name and mobile; that number is the key to their tab, so later orders on the same number join it. Orders reach the admin instantly.
 - Track order status, apply a coupon, and ask for the bill. Payment is at the counter.
-- Anyone who can't scan gets a table picker at `/`.
+- Old per-table links (`/t/<code>`) redirect to `/`.
 
 ### For staff — `/admin`
 Sign in with `ADMIN_PASSWORD`.
 
 | Screen | What you do there |
 | --- | --- |
-| **Tables** | Live floor view, add / rename / delete tables, rotate or print QR cards, clear or bill a tab. |
-| **Billing** | Bill a table tab or a walk-in counter sale. Customer name and phone, catalog or custom items, coupon, manual discount, extra charges, payment by **Cash / UPI / Card / Split**. |
+| **Open tabs** | Every guest's running tab by name and mobile, start a tab by hand, print the shop QR card, clear or bill a tab. |
+| **Billing** | Bill a customer's open tab or a walk-in counter sale (no phone needed). Customer name and phone, catalog or custom items, coupon, manual discount, extra charges, payment by **Cash / UPI / Card / Split**. |
 | **Orders** | All bills with filters and search. Each bill has **WhatsApp, View, Print, Delete**. Export to CSV. |
 | **Analytics** | Revenue, expenses and net earnings, order sources, top items, **payment-mode breakdown**, stock summary, customers, coupon performance. |
 | **Live queue** | Incoming orders for the kitchen: accept, serve, cancel. |
@@ -65,7 +65,7 @@ Copy `.env.example` to `.env.local` and fill it in:
 ### 4. Set up the database
 ```bash
 npm run db:migrate   # create / update tables
-npm run db:seed      # sample menu, 6 tables, one coupon
+npm run db:seed      # sample menu and one coupon
 ```
 
 ### 5. Run
@@ -93,9 +93,10 @@ Set **Settings → "Public address for QR codes"** to an address phones can reac
 ```
 app/
   admin/            Admin panel (pages in (panel)/, UI in _ui/)
-  t/[code]/         Guest ordering flow
+  _components/      Guest menu (served at /)
+  t/[code]/         Redirects old table QR links to /
   invoice/[id]/     Public, printable invoice page
-  api/              admin op/state/auth, stock-movements, table routes
+  api/              admin op/state/auth, stock-movements, tab (guest) routes
 lib/
   ops.ts            Every read/write, with validation
   analytics.ts      Reporting maths (runs in the browser)
@@ -111,7 +112,7 @@ landing/            Parked marketing page (see landing/README.md)
 Add the same environment variables as above — `DATABASE_URL` (transaction pooler), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ADMIN_PASSWORD`, `AUTH_SECRET` — and set the function region next to your database. Run `npm run db:migrate` against the production database before the first deploy and after any schema change.
 
 ## Notes
-- Billing a table closes its tab and frees the table, so the next guests start fresh.
+- Billing a customer's tab closes it; their next order on the same mobile starts a fresh one. A mobile can only have one open tab.
 - Deleting a bill returns its items to stock and gives back any coupon use. Voiding keeps the bill on record but removes it from revenue.
 - The landing page is parked, not deleted: it lives in `landing/`, off the route tree.
 - This project targets a newer Next.js than most documentation covers. See `AGENTS.md` before changing framework-level code.

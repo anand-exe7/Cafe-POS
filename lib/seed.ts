@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
-import type { Coupon, Product, Table } from "./types";
+import type { Coupon, Product } from "./types";
 
-/* First-run data: the café menu, a few tables and one example coupon.
+/* First-run data: the café menu and one example coupon.
    Everything here is editable from /admin. */
 
 const U = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=640&q=75`;
@@ -44,12 +44,11 @@ export const uid = (n = 10) => randomBytes(n).toString("base64url").replace(/[-_
 const ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const code = (n: number) => Array.from(randomBytes(n), (b) => ALPHA[b % ALPHA.length]).join("");
 
-export function seedData(): { products: Product[]; tables: Table[]; coupons: Coupon[]; shopName: string } {
+export function seedData(): { products: Product[]; coupons: Coupon[]; shopName: string } {
   const now = Date.now();
 
-  /* Fixed ids and table codes keep the menu and printed QR codes stable if the
-     database is ever re-seeded. Records created at runtime use the random
-     uid()/code() above. */
+  /* Fixed ids keep the menu stable if the database is ever re-seeded. Records
+     created at runtime use the random uid()/code() above. */
   const products: Product[] = MENU.map(([name, category, price, stock, img, description, eggless, tags = []], i) => ({
     id: `sp${i + 1}`,
     name,
@@ -66,19 +65,9 @@ export function seedData(): { products: Product[]; tables: Table[]; coupons: Cou
     updatedAt: now + i,
   }));
 
-  const tables = [2, 2, 4, 4, 4, 6].map((seats, i) => ({
-    id: `st${i + 1}`,
-    label: `T${i + 1}`,
-    seats,
-    code: `tbl${String(i + 1).padStart(3, "0")}`,
-    sessionId: null,
-    createdAt: now + i,
-  }));
-
   return {
     shopName: "Chef Loving Cakes",
     products,
-    tables,
     coupons: [
       { id: "scoupon1", code: "KODAI10", percent: 10, minOrder: 500, expiresAt: null, limit: 100, used: 0, active: true, createdAt: now },
     ],

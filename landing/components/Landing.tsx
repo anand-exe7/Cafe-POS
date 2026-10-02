@@ -5,7 +5,9 @@ import MenuIndex from "./MenuIndex";
 import CakeLab from "./CakeLab";
 import SliceWheel from "./SliceWheel";
 import { Split, Letters, Roll, Drip, Barcode, Cherry, Arrow, WhatsApp, Phone, Insta, Mail } from "@/app/_components/bits";
-import type { TableCard } from "@/lib/types";
+/* The per-table picker belongs to the old table-ordering app; the live app has no
+   tables any more, so this parked page keeps its own copy of the shape. */
+type TableCard = { label: string; seats: number; code: string };
 
 type CSSVars = React.CSSProperties & Record<`--${string}`, string | number>;
 const U = (id: string, w = 700) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`;

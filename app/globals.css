@@ -5,7 +5,7 @@
    Palette: ganache cocoa · buttercream · cherry, with pistachio & caramel
    Type:    Fraunces (soft / wonky serif) · Instrument Sans · Caveat notes
    Loaded on every route. Page-specific paint lives beside its page:
-   table ordering in `app/t/table.css`, admin in `app/admin/admin.css`,
+   table ordering in `app/menu.css`, admin in `app/admin/admin.css`,
    the parked landing page in `landing/landing.css`.
    ========================================================================== */
 

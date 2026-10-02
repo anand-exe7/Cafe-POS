@@ -37,7 +37,7 @@ function Chip({ on, children, onClick, tone = "red" }: { on: boolean; children: 
 
 export default function OrdersPage() {
   const { s, act, confirm } = useAdmin();
-  const [type, setType] = useState<"all" | "table" | "counter">("all");
+  const [type, setType] = useState<"all" | "tab" | "counter">("all");
   const [date, setDate] = useState<DateF>("any");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -64,7 +64,7 @@ export default function OrdersPage() {
     () =>
       s.bills
         .filter((b) => (type === "all" || b.source === type) && inRange(b.createdAt, range))
-        .filter((b) => !needle || `${b.invoiceNo} ${b.customerName} ${b.customerPhone} ${b.tableLabel} ${b.couponCode ?? ""} ${b.items.map((i) => i.name).join(" ")}`.toLowerCase().includes(needle))
+        .filter((b) => !needle || `${b.invoiceNo} ${b.customerName} ${b.customerPhone} ${b.couponCode ?? ""} ${b.items.map((i) => i.name).join(" ")}`.toLowerCase().includes(needle))
         .sort((a, b) => b.createdAt - a.createdAt),
     [s.bills, type, range, needle],
   );
@@ -73,8 +73,8 @@ export default function OrdersPage() {
       downloadText(
         `bills-${new Date().toISOString().slice(0, 10)}.csv`,
         csv([
-          ["Invoice", "Type", "Table", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
-          ...bills.map((b) => [b.invoiceNo, b.source, b.tableLabel, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.total, b.payment, b.cashAmount, b.upiAmount, b.cardAmount, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
+          ["Invoice", "Type", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
+          ...bills.map((b) => [b.invoiceNo, b.source, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.total, b.payment, b.cashAmount, b.upiAmount, b.cardAmount, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
         ]),
       );
   };
@@ -99,7 +99,7 @@ export default function OrdersPage() {
             {(
               [
                 ["all", "All Bills"],
-                ["table", "Table"],
+                ["tab", "Customer tab"],
                 ["counter", "Counter"],
               ] as const
             ).map(([v, t]) => (
@@ -173,7 +173,7 @@ export default function OrdersPage() {
                       </button>
                     </td>
                     <td className={cx(td, "font-semibold text-slate-800")}>{b.customerName || "—"}</td>
-                    <td className={td}>{b.source === "table" ? <Badge tone="orange">Table {b.tableLabel}</Badge> : <Badge tone="sky">Counter</Badge>}</td>
+                    <td className={td}>{b.source === "tab" ? <Badge tone="orange">Customer tab</Badge> : <Badge tone="sky">Counter</Badge>}</td>
                     <td className={cx(td, "font-bold text-slate-900")}>{rupee(b.total)}</td>
                     <td className={cx(td, "text-slate-600")}>{PAY[b.payment]}</td>
                     <td className={cx(td, "text-slate-600")}>{fmtDate(b.createdAt)}</td>
@@ -261,7 +261,7 @@ export default function OrdersPage() {
                 <span className="block text-slate-500">{bill.customerPhone || "no phone"}</span>
               </p>
               <p className="text-right">
-                <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{bill.source === "table" ? `Table ${bill.tableLabel}` : "Counter"}</span>
+                <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{bill.source === "tab" ? "Customer tab" : "Counter"}</span>
                 <b>{fmtDateTime(bill.createdAt)}</b>
                 <span className="block">{bill.status === "completed" ? <Badge tone="green">Completed</Badge> : <Badge tone="slate">Void</Badge>}</span>
               </p>

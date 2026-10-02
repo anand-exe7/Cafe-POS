@@ -1,4 +1,4 @@
-/* Shared shapes for the table-ordering system (server + client). */
+/* Shared shapes for the phone-number ordering system (server + client). */
 
 export type Product = {
   id: string;
@@ -19,29 +19,16 @@ export type Product = {
   updatedAt: number;
 };
 
-export type Table = {
-  id: string;
-  label: string;
-  seats: number;
-  /** slug printed in the QR code: /t/<code> */
-  code: string;
-  /** the open tab, if someone is seated */
-  sessionId: string | null;
-  createdAt: number;
-};
-
 export type SessionStatus = "open" | "closed" | "void";
 
-/** One visit to a table: opens with the first order, closes when the bill is paid. */
+/** One customer's tab, found by their mobile: opens with the first order, closes when the bill is paid. */
 export type Session = {
   id: string;
-  tableId: string;
   status: SessionStatus;
   openedAt: number;
   closedAt: number | null;
   customerName: string;
   customerPhone: string;
-  guests: number;
   billRequestedAt: number | null;
   billId: string | null;
   couponCode: string | null;
@@ -62,7 +49,6 @@ export type OrderSource = "customer" | "counter";
 export type Order = {
   id: string;
   no: number;
-  tableId: string;
   sessionId: string;
   items: OrderItem[];
   note: string;
@@ -75,7 +61,7 @@ export type Order = {
   updatedAt: number;
 };
 
-export type BillSource = "table" | "counter";
+export type BillSource = "tab" | "counter";
 /** "split" = part cash, part card; cashAmount / cardAmount on the bill say how much each. */
 export type PayMethod = "cash" | "upi" | "card" | "split";
 export type DiscountType = "amount" | "percent";
@@ -86,8 +72,6 @@ export type Bill = {
   id: string;
   invoiceNo: string;
   source: BillSource;
-  tableId: string | null;
-  tableLabel: string;
   sessionId: string | null;
   customerName: string;
   customerPhone: string;
@@ -166,10 +150,10 @@ export type StockMovement = {
   createdAt: number;
 };
 
-/* Guests never hold an account — they order from a QR code and are known by the
-   mobile they leave with the order. So every stored user is someone who has been
-   given admin access, keyed by that same mobile, which is what lets a regular at
-   a table be promoted straight from the Users page. */
+/* Guests never hold an account — they order from the shop's QR code and are known
+   by the mobile they leave with the order. So every stored user is someone who has
+   been given admin access, keyed by that same mobile, which is what lets a regular
+   be promoted straight from the Users page. */
 export type StaffUser = {
   id: string;
   name: string;
@@ -196,7 +180,6 @@ export type DB = {
   seq: { order: number };
   settings: Settings;
   products: Product[];
-  tables: Table[];
   sessions: Session[];
   orders: Order[];
   bills: Bill[];
@@ -211,13 +194,10 @@ export type AdminState = Omit<DB, "settings" | "users"> & {
   users: PublicUser[];
 };
 
-/** One entry in the landing page's "pick your table" directory. */
-export type TableCard = Pick<Table, "label" | "seats" | "code">;
-
 /** A tab that closed in the last few minutes — "paid" once it was billed, "cleared"
     if staff wiped it without taking payment. Lets the guest's phone close the loop
-    and reset itself for whoever sits down next. */
-export type TableClose = {
+    and reset itself for the next visit. */
+export type TabClose = {
   kind: "paid" | "cleared";
   invoiceNo: string | null;
   total: number;
@@ -226,18 +206,17 @@ export type TableClose = {
   at: number;
 };
 
-/** What a customer at a table receives. */
-export type TableView = {
-  table: { label: string; seats: number; code: string };
+/** What a customer receives: the menu, plus their tab when their mobile has one open. */
+export type TabView = {
   shopName: string;
   menu: MenuItem[];
-  closed: TableClose | null;
+  closed: TabClose | null;
   tab: {
     orders: { no: number; items: OrderItem[]; status: OrderStatus; subtotal: number; createdAt: number }[];
     total: number;
     billRequested: boolean;
+    /** first name only — a phone number is not a password */
     name: string;
-    hasPhone: boolean;
     /** the coupon this guest applied, with what it saves right now */
     coupon: { code: string; percent: number; discount: number; ok: boolean; reason: string } | null;
     /** what the guest should expect to pay: total minus the coupon */

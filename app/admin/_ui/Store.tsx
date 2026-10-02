@@ -3,7 +3,7 @@
 import { subscribeChanges } from "@/lib/realtime";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import type { AdminState, Order, Session, Table } from "@/lib/types";
+import type { AdminState, Order, Session } from "@/lib/types";
 import { round2 } from "@/lib/money";
 
 /* ------------------------------------------------------------------
@@ -15,9 +15,9 @@ export type Toast = { id: number; kind: "ok" | "err" | "order" | "bill" | "info"
 type ConfirmReq = { title: string; body?: React.ReactNode; ok?: string; danger?: boolean };
 export type ActResult<T = unknown> = { ok: true; result: T } | { ok: false; error: string };
 
-export type FloorTable = {
-  table: Table;
-  session: Session | null;
+/** One open tab, found by the customer's mobile. */
+export type FloorTab = {
+  session: Session;
   orders: Order[];
   total: number;
   items: number;
@@ -42,9 +42,11 @@ type Ctx = {
   setSound: (v: boolean) => void;
   base: string;
   now: number;
-  floor: FloorTable[];
-  tableLabel: (id: string | null) => string;
+  floor: FloorTab[];
 };
+
+/** Who a tab, order or bill belongs to, as staff read it: name first, then mobile. */
+export const whoIs = (x: { customerName: string; customerPhone: string }) => x.customerName || x.customerPhone || "Guest";
 
 const C = createContext<Ctx | null>(null);
 
@@ -197,7 +199,6 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
   );
 
   /* ---------- live alerts: new orders, bill requests ---------- */
-  const tableLabel = useCallback((id: string | null) => s.tables.find((t) => t.id === id)?.label ?? "—", [s.tables]);
   const seen = useRef({
     orders: new Set(initial.orders.map((o) => o.id)),
     bills: new Set(initial.sessions.filter((x) => x.billRequestedAt).map((x) => x.id)),
@@ -209,16 +210,16 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
       seen.current.orders.add(o.id);
       if (o.status !== "new") continue;
       ring = true;
-      toast({ kind: "order", title: `New order #${o.no} · ${tableLabel(o.tableId)}`, body: itemsText(o), href: "/admin/queue" });
+      toast({ kind: "order", title: `New order #${o.no} · ${whoIs(o)}`, body: itemsText(o), href: "/admin/queue" });
     }
     for (const x of s.sessions) {
       if (!x.billRequestedAt || x.status !== "open" || seen.current.bills.has(x.id)) continue;
       seen.current.bills.add(x.id);
       ring = true;
-      toast({ kind: "bill", title: `${tableLabel(x.tableId)} asked for the bill`, body: x.customerName ? `${x.customerName} is ready to pay.` : "Guests are ready to pay.", href: `/admin/billing?table=${x.tableId}` });
+      toast({ kind: "bill", title: `${whoIs(x)} asked for the bill`, body: `${x.customerName || "A guest"} is ready to pay.`, href: `/admin/billing?tab=${x.id}` });
     }
     if (ring) chime();
-  }, [s, toast, chime, tableLabel]);
+  }, [s, toast, chime]);
 
   /* ---------- confirm ---------- */
   const confirm = useCallback((c: ConfirmReq) => {
@@ -242,24 +243,24 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
     return () => cancelAnimationFrame(r);
   }, [printTick]);
 
-  /* ---------- derived floor ---------- */
-  const floor = useMemo<FloorTable[]>(() => {
-    return s.tables.map((table) => {
-      const session = table.sessionId ? s.sessions.find((x) => x.id === table.sessionId && x.status === "open") ?? null : null;
-      const orders = session ? s.orders.filter((o) => o.sessionId === session.id) : [];
-      const live = orders.filter((o) => o.status !== "cancelled");
-      return {
-        table,
-        session,
-        orders,
-        total: round2(live.reduce((a, o) => a + o.subtotal, 0)),
-        items: live.reduce((a, o) => a + o.items.reduce((b, i) => b + i.qty, 0), 0),
-        fresh: orders.filter((o) => o.status === "new").length,
-        cooking: orders.filter((o) => o.status === "preparing").length,
-        billRequested: !!session?.billRequestedAt,
-      };
-    });
-  }, [s.tables, s.sessions, s.orders]);
+  /* ---------- derived floor: every open tab, oldest first ---------- */
+  const floor = useMemo<FloorTab[]>(() => {
+    return s.sessions
+      .filter((session) => session.status === "open")
+      .map((session) => {
+        const orders = s.orders.filter((o) => o.sessionId === session.id);
+        const live = orders.filter((o) => o.status !== "cancelled");
+        return {
+          session,
+          orders,
+          total: round2(live.reduce((a, o) => a + o.subtotal, 0)),
+          items: live.reduce((a, o) => a + o.items.reduce((b, i) => b + i.qty, 0), 0),
+          fresh: orders.filter((o) => o.status === "new").length,
+          cooking: orders.filter((o) => o.status === "preparing").length,
+          billRequested: !!session.billRequestedAt,
+        };
+      });
+  }, [s.sessions, s.orders]);
 
   const base = (s.settings.publicUrl || origin).replace(/\/+$/, "");
 
@@ -280,7 +281,6 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
     base,
     now,
     floor,
-    tableLabel,
   };
   return <C.Provider value={value}>{children}</C.Provider>;
 }
