@@ -63,9 +63,11 @@ export function itemStats(bills: Bill[]): ItemStat[] {
 }
 
 export function summary(bills: Bill[]) {
-  let revenue = 0, tabRev = 0, counterRev = 0, tabN = 0, counterN = 0, items = 0, discount = 0, discounted = 0;
+  let revenue = 0, tabRev = 0, counterRev = 0, tabN = 0, counterN = 0, items = 0, discount = 0, discounted = 0, gst = 0, gstN = 0;
   for (const b of bills) {
     revenue += b.total;
+    gst += b.gstAmount;
+    if (b.isGst) gstN++;
     items += b.itemCount;
     discount += b.discount;
     if (b.discount > 0) discounted++;
@@ -88,6 +90,8 @@ export function summary(bills: Bill[]) {
     items,
     discount,
     discounted,
+    gst,
+    gstN,
     aov: bills.length ? revenue / bills.length : 0,
     top: byQty[0]?.name ?? "—",
   };

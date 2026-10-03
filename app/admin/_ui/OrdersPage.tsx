@@ -73,8 +73,8 @@ export default function OrdersPage() {
       downloadText(
         `bills-${new Date().toISOString().slice(0, 10)}.csv`,
         csv([
-          ["Invoice", "Type", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
-          ...bills.map((b) => [b.invoiceNo, b.source, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.total, b.payment, b.cashAmount, b.upiAmount, b.cardAmount, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
+          ["Invoice", "Type", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Bill type", "GST %", "Taxable amount", "GST amount", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
+          ...bills.map((b) => [b.invoiceNo, b.source, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.isGst ? "GST" : "Non-GST", b.gstPercent, b.taxableAmount, b.gstAmount, b.total, b.payment, b.cashAmount, b.upiAmount, b.cardAmount, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
         ]),
       );
   };
@@ -299,6 +299,17 @@ export default function OrdersPage() {
                 <div className="flex justify-between">
                   <dt className="text-slate-500">Extra charges</dt>
                   <dd>{rupee(bill.extra)}</dd>
+                </div>
+              )}
+              {bill.isGst ? (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">GST ({bill.gstPercent}%) on {rupee(bill.taxableAmount)}</dt>
+                  <dd>{rupee(bill.gstAmount)}</dd>
+                </div>
+              ) : (
+                <div className="flex justify-between text-slate-400">
+                  <dt>Non-GST bill</dt>
+                  <dd>GST not applicable</dd>
                 </div>
               )}
               <div className="flex justify-between pt-2 text-[17px]">

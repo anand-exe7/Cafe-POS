@@ -21,6 +21,7 @@ export function billText(b: Bill, shop: string, publicUrl = "") {
     b.couponDiscount ? `Coupon ${b.couponCode} (${b.couponPercent}%): -${rupee(b.couponDiscount)}` : "",
     b.manualDiscount ? `Discount: -${rupee(b.manualDiscount)}` : "",
     b.extra ? `Extra charges: ${rupee(b.extra)}` : "",
+    b.isGst ? `GST (${b.gstPercent}%) on ${rupee(b.taxableAmount)}: ${rupee(b.gstAmount)}` : "",
     `*Grand total: ${rupee(b.total)}*`,
     `Paid by ${PAY[b.payment]}`,
     b.payment === "split" ? `  Cash ${rupee(b.cashAmount)} · Card ${rupee(b.cardAmount)}` : "",
@@ -73,7 +74,7 @@ function Sheet({ b, shop, size }: { b: Bill; shop: string; size: "A3" | "A4" | "
           <p>{ADDRESS}</p>
         </div>
         <div className="inv__meta">
-          <h2>INVOICE</h2>
+          <h2>{b.isGst ? "TAX INVOICE" : "INVOICE"}</h2>
           <p>
             <b>{b.invoiceNo}</b>
           </p>
@@ -142,6 +143,12 @@ function Sheet({ b, shop, size }: { b: Bill; shop: string; size: "A3" | "A4" | "
             <dd>{rupee(b.extra)}</dd>
           </div>
         )}
+        {b.isGst && (
+          <div>
+            <dt>GST ({b.gstPercent}%) on {rupee(b.taxableAmount)}</dt>
+            <dd>{rupee(b.gstAmount)}</dd>
+          </div>
+        )}
         <div className="inv__tot">
           <dt>Grand total</dt>
           <dd>{rupee(b.total)}</dd>
@@ -182,6 +189,7 @@ function Thermal({ b, shop, roll }: { b: Bill; shop: string; roll: 2 | 3 }) {
       <h1>{shop}</h1>
       <p className="c">{ADDRESS}</p>
       <hr />
+      {b.isGst && <p className="c">TAX INVOICE</p>}
       <div className="row">
         <span>{b.invoiceNo}</span>
         <span>{b.source === "tab" ? "Customer tab" : "Counter"}</span>
@@ -223,6 +231,12 @@ function Thermal({ b, shop, roll }: { b: Bill; shop: string; roll: 2 | 3 }) {
         <div className="row">
           <span>Extra charges</span>
           <span>{rupee(b.extra)}</span>
+        </div>
+      )}
+      {b.isGst && (
+        <div className="row">
+          <span>GST ({b.gstPercent}%)</span>
+          <span>{rupee(b.gstAmount)}</span>
         </div>
       )}
       <hr />

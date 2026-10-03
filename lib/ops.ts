@@ -474,7 +474,10 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
   if (cc && !coupon) throw new ApiError(`Coupon ${cc} doesn't exist.`);
   const manualType = a.manualType === "percent" ? "percent" : "amount";
   const manualValue = Math.max(0, num(a.manualValue) || 0);
-  const calc = computeBill({ items, coupon, manualType, manualValue, extra: num(a.extra) || 0 });
+  const isGst = a.isGst === true;
+  const gstRaw = num(a.gstPercent);
+  if (isGst && !(gstRaw >= 0 && gstRaw <= 100)) throw new ApiError("GST should be between 0 and 100%.");
+  const calc = computeBill({ items, coupon, manualType, manualValue, extra: num(a.extra) || 0, gst: isGst, gstPercent: isGst ? gstRaw : 0 });
   if (coupon && calc.couponOk && !calc.couponOk.ok) throw new ApiError(`Coupon ${coupon.code}: ${calc.couponOk.reason}.`);
 
   const payment: PayMethod = a.payment === "upi" || a.payment === "card" || a.payment === "split" ? a.payment : "cash";
@@ -539,6 +542,10 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
       manualDiscount: calc.manualDiscount,
       discount: calc.discount,
       extra: calc.extra,
+      isGst,
+      gstPercent: calc.gstPercent,
+      taxableAmount: calc.taxable,
+      gstAmount: calc.gstAmount,
       total: calc.total,
       payment,
       cashAmount,

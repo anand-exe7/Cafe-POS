@@ -26,6 +26,8 @@ const tenDigits = (v: string) => {
 const okPhone = (p: string) => /^[6-9]\d{9}$/.test(p);
 const sigOf = (f: FloorTab) => f.orders.map((o) => o.id + o.status).join("|");
 
+const DEFAULT_GST = "18";
+
 let seq = 0;
 const blank = (): Line => ({ key: ++seq, productId: null, name: "", price: "", qty: 1 });
 const linesOf = (f: FloorTab): Line[] => {
@@ -51,6 +53,8 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
   const [mType, setMType] = useState<DiscountType>("amount");
   const [mVal, setMVal] = useState("");
   const [extra, setExtra] = useState("");
+  const [isGst, setIsGst] = useState(false);
+  const [gstPct, setGstPct] = useState(DEFAULT_GST);
   const [pay, setPay] = useState<PayMethod>("cash");
   const [received, setReceived] = useState("");
   const [splitCash, setSplitCash] = useState("");
@@ -76,6 +80,8 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
     setMType("amount");
     setMVal("");
     setExtra("");
+    setIsGst(false);
+    setGstPct(DEFAULT_GST);
     setPay("cash");
     setReceived("");
     setSplitCash("");
@@ -110,7 +116,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
     .filter((l) => l.name.trim() || Number(l.price) > 0)
     .map((l) => ({ productId: l.productId, name: l.name.trim(), price: Math.max(0, Number(l.price) || 0), qty: l.qty }));
   const cp = s.coupons.find((c) => c.code === coupon) ?? null;
-  const calc = computeBill({ items, coupon: cp, manualType: mType, manualValue: Number(mVal) || 0, extra: Number(extra) || 0 });
+  const calc = computeBill({ items, coupon: cp, manualType: mType, manualValue: Number(mVal) || 0, extra: Number(extra) || 0, gst: isGst, gstPercent: Number(gstPct) || 0 });
   const recv = Number(received) || 0;
   const change = pay === "cash" && recv > 0 ? recv - calc.total : 0;
 
@@ -125,6 +131,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
   if (!items.length) problems.push("Add at least one item.");
   if (items.some((i) => !i.name)) problems.push("Every item needs a name.");
   if (cp && calc.couponOk && !calc.couponOk.ok) problems.push(`Coupon ${cp.code}: ${calc.couponOk.reason}.`);
+  if (isGst && !(gstPct !== "" && Number(gstPct) >= 0 && Number(gstPct) <= 100)) problems.push("GST should be a percentage between 0 and 100.");
   if (pay === "cash" && recv > 0 && recv < calc.total) problems.push("Amount received is less than the total.");
   if (pay === "split" && (!(sCash > 0) || !(sCard > 0))) problems.push("Split payment: enter both the cash and the card amount.");
   else if (pay === "split" && splitOff !== 0) problems.push(`Split payment: cash + card should equal ${rupee(calc.total)}.`);
@@ -145,6 +152,8 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
       manualType: mType,
       manualValue: mVal,
       extra,
+      isGst,
+      gstPercent: gstPct,
       payment: pay,
       received,
       cashAmount: splitCash,
@@ -413,7 +422,9 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
 
             <dl className="space-y-3 border-t border-dashed border-slate-200 pt-5 text-[14px]">
               <div className="flex justify-between">
-                <dt className="text-slate-600">Subtotal ({calc.itemCount} items)</dt>
+                <dt className="text-slate-600">
+                  Subtotal ({calc.itemCount} items){isGst && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-800/70">excl. GST</span>}
+                </dt>
                 <dd className="font-semibold">{rupee(calc.subtotal)}</dd>
               </div>
               {calc.couponDiscount > 0 && (
@@ -436,10 +447,44 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               </div>
             </dl>
 
+            <div className="space-y-3 border-t border-dashed border-slate-200 pt-5">
+              <div className="grid grid-cols-2 rounded-full border border-slate-200 bg-white p-1" role="group" aria-label="Bill type">
+                {(
+                  [
+                    [false, "Non-GST bill"],
+                    [true, "GST invoice"],
+                  ] as const
+                ).map(([g, t]) => (
+                  <button
+                    key={t}
+                    type="button"
+                    aria-pressed={isGst === g}
+                    onClick={() => setIsGst(g)}
+                    className={cx("h-10 rounded-full text-[12.5px] font-extrabold uppercase tracking-wide transition", isGst === g ? "bg-slate-800 text-white shadow" : "text-slate-600 hover:text-slate-900")}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              {isGst && (
+                <div className="flex items-center justify-between gap-3 text-[14px]">
+                  <span className="font-bold text-slate-800">
+                    GST <span className="text-[10px] font-bold uppercase tracking-wide text-amber-800/70">(added)</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <input type="number" min={0} max={100} step="0.1" inputMode="decimal" className="h-10 w-20 rounded-lg border border-slate-300 px-3 text-right text-[14px] font-bold outline-none focus:border-red-400" value={gstPct} onChange={(e) => setGstPct(e.target.value)} aria-label="GST percent" />
+                    <span className="text-slate-600">%</span>
+                    <b className="adm-num w-24 text-right font-semibold text-slate-700">{rupee(calc.gstAmount)}</b>
+                  </span>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center justify-between border-t border-slate-200 pt-5">
               <span className="text-[17px] font-extrabold uppercase tracking-[0.04em] text-slate-900">Grand total</span>
               <b className="adm-num text-[26px] font-extrabold text-slate-900">{rupee(calc.total)}</b>
             </div>
+            {isGst && calc.gstAmount > 0 && <p className="-mt-3 text-right text-[11.5px] text-slate-400">includes {rupee(calc.gstAmount)} GST on {rupee(calc.taxable)}</p>}
 
             <div className="rounded-2xl border border-slate-200 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">

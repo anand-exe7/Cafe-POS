@@ -87,7 +87,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           </div>
           <div className="shrink-0 space-y-1.5 sm:text-right">
             <div>
-              <span className="text-lg font-bold tracking-tight text-zinc-900 uppercase">Invoice</span>
+              <span className="text-lg font-bold tracking-tight text-zinc-900 uppercase">{b.isGst ? "Tax Invoice" : "Invoice"}</span>
               <p className="font-mono text-xs text-zinc-500">{b.invoiceNo}</p>
             </div>
             <div className="space-y-0.5 pt-1 text-xs text-zinc-600">
@@ -185,7 +185,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
             )}
             <div className="pt-2 text-[11px] leading-relaxed text-zinc-500">
               <p className="mb-0.5 font-medium text-zinc-700">Terms &amp; Notes:</p>
-              <p>• Prices are in Indian Rupees and include applicable taxes.</p>
+              <p>{b.isGst ? `• Prices are in Indian Rupees; GST @ ${b.gstPercent}% is added to the amount.` : "• Prices are in Indian Rupees. GST is not applicable on this bill."}</p>
               <p>• Please keep this invoice for your records.</p>
             </div>
           </div>
@@ -214,6 +214,18 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                 <span>Extra charges</span>
                 <span className="font-mono text-zinc-800">₹{inr(b.extra)}</span>
               </div>
+            )}
+            {b.isGst && (
+              <>
+                <div className="flex justify-between border-t border-dashed border-zinc-200 pt-1 text-zinc-600">
+                  <span>Taxable amount</span>
+                  <span className="font-mono text-zinc-800">₹{inr(b.taxableAmount)}</span>
+                </div>
+                <div className="flex justify-between text-zinc-600">
+                  <span>GST ({b.gstPercent}%)</span>
+                  <span className="font-mono text-zinc-900">₹{inr(b.gstAmount)}</span>
+                </div>
+              </>
             )}
             <div className="mt-2 flex items-baseline justify-between border-t border-zinc-900 pt-2.5">
               <span className="text-sm font-bold text-zinc-900 uppercase">Total</span>

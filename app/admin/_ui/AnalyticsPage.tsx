@@ -196,7 +196,7 @@ export default function AnalyticsPage() {
         <div className="adm-in space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi label="Net earnings" value={rupee(net)} hint="Revenue − expenses" icon="rupee" tone={net >= 0 ? "emerald" : "red"} />
-            <Kpi label="Total revenue" value={rupee(sum.revenue)} hint="Customer tabs + counter combined" icon="rupee" tone="emerald" />
+            <Kpi label="Total revenue" value={rupee(sum.revenue)} hint={sum.gst > 0 ? `Includes ${rupee(sum.gst)} GST collected` : "Customer tabs + counter combined"} icon="rupee" tone="emerald" />
             <Kpi label="Total expenses" value={rupee(expensesTotal)} hint="From the Expenses tab" icon="bag" tone="rose" />
             <Kpi label="Discounts given" value={rupee(sum.discount)} hint={`${sum.discounted} discounted bills`} icon="coupon" tone="violet" />
           </div>

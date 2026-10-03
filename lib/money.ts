@@ -39,9 +39,12 @@ export type BillInput = {
   manualType: DiscountType;
   manualValue: number;
   extra: number;
+  /** GST bill: tax is added on top of the prices (exclusive). A non-GST bill carries none. */
+  gst?: boolean;
+  gstPercent?: number;
 };
 
-export function computeBill({ items, coupon, manualType, manualValue, extra }: BillInput) {
+export function computeBill({ items, coupon, manualType, manualValue, extra, gst = false, gstPercent = 0 }: BillInput) {
   const subtotal = round2(items.reduce((s, i) => s + i.price * i.qty, 0));
   const itemCount = items.reduce((s, i) => s + i.qty, 0);
   const couponOk = coupon ? checkCoupon(coupon, subtotal) : null;
@@ -51,8 +54,13 @@ export function computeBill({ items, coupon, manualType, manualValue, extra }: B
   const manualDiscount = Math.min(afterCoupon, manualType === "percent" ? Math.round((afterCoupon * Math.min(100, mv)) / 100) : round2(mv));
   const discount = round2(couponDiscount + manualDiscount);
   const ex = Math.max(0, round2(Number(extra) || 0));
-  const total = round2(Math.max(0, subtotal - discount) + ex);
-  return { subtotal, itemCount, couponDiscount, couponOk, manualDiscount, discount, extra: ex, total };
+  /* GST is charged on what the customer is actually billed for — items after
+     discounts, plus any extra charge — and sits on top of it. */
+  const taxable = round2(Math.max(0, subtotal - discount) + ex);
+  const rate = gst ? Math.min(100, Math.max(0, round2(Number(gstPercent) || 0))) : 0;
+  const gstAmount = round2((taxable * rate) / 100);
+  const total = round2(taxable + gstAmount);
+  return { subtotal, itemCount, couponDiscount, couponOk, manualDiscount, discount, extra: ex, taxable, gstPercent: rate, gstAmount, total };
 }
 
 /** Collapse repeated products/lines into one line each. */

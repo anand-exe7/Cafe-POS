@@ -87,6 +87,12 @@ export type Bill = {
   manualDiscount: number;
   discount: number;
   extra: number;
+  /** true = GST invoice (tax added on top); false = non-GST bill */
+  isGst: boolean;
+  gstPercent: number;
+  /** amount GST is charged on: subtotal − discount + extra */
+  taxableAmount: number;
+  gstAmount: number;
   total: number;
   payment: PayMethod;
   /** How the total was tendered. Always sums to `total`, whichever method was used. */
