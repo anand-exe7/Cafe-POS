@@ -150,12 +150,12 @@ export default function TabsPage({ focus }: { focus?: string }) {
                 key={x.session.id}
                 type="button"
                 onClick={() => setSel(x.session.id)}
-                className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 text-left shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-12px_rgba(15,23,42,.25)]"
+                className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-12px_rgba(15,23,42,.25)]"
               >
                 <span className={cx("absolute inset-x-0 top-0 h-1", st.bar)} />
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-[22px] font-extrabold leading-tight text-slate-900">{x.session.customerName || "Guest"}</p>
+                    <p className="truncate text-[18px] font-extrabold leading-tight text-slate-900">{x.session.customerName || "Guest"}</p>
                     <p className="adm-num mt-1 text-[13px] font-medium text-slate-500">{x.session.customerPhone}</p>
                   </div>
                   <Badge tone={st.tone} className={cx((x.fresh > 0 || x.billRequested) && "adm-pulse")}>
@@ -164,7 +164,7 @@ export default function TabsPage({ focus }: { focus?: string }) {
                 </div>
                 <div className="mt-4 border-t border-dashed border-slate-200 pt-4">
                   <div className="flex items-end justify-between gap-2">
-                    <p className="adm-num text-[24px] font-extrabold text-slate-900">{rupee(x.total)}</p>
+                    <p className="adm-num text-[20px] font-extrabold text-slate-900">{rupee(x.total)}</p>
                     <p className="flex items-center gap-1 text-[12px] font-medium text-slate-400">
                       <Icon name="clock" size={13} /> {ago(x.session.openedAt, now)}
                     </p>
@@ -187,10 +187,10 @@ export default function TabsPage({ focus }: { focus?: string }) {
       <Drawer open={!!f} onClose={() => setSel(null)}>
         {f && (
           <>
-            <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-100 bg-white px-6 py-4">
+            <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-100 bg-white px-5 py-3.5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-3">
-                  <h2 className="truncate text-[24px] font-extrabold text-slate-900">{f.session.customerName || "Guest"}</h2>
+                  <h2 className="truncate text-[20px] font-extrabold text-slate-900">{f.session.customerName || "Guest"}</h2>
                   <Badge tone={status(f).tone}>{status(f).label}</Badge>
                 </div>
                 <p className="adm-num text-[12px] text-slate-400">{f.session.customerPhone}</p>
@@ -208,12 +208,12 @@ export default function TabsPage({ focus }: { focus?: string }) {
               </button>
             </div>
 
-            <div className="space-y-6 px-6 py-5">
+            <div className="space-y-5 px-5 py-4">
               <div className="rounded-2xl bg-slate-50 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Running total</p>
-                    <p className="adm-num mt-1 text-[30px] font-extrabold text-slate-900">{rupee(f.total)}</p>
+                    <p className="adm-num mt-1 text-[25px] font-extrabold text-slate-900">{rupee(f.total)}</p>
                   </div>
                   <div className="text-right text-[12px] text-slate-500">
                     <p>Opened {fmtTime(f.session.openedAt)}</p>

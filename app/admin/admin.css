@@ -68,7 +68,7 @@ html:has(.adm) {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--body);
-  font-size: 14px;
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
 .adm ::selection {

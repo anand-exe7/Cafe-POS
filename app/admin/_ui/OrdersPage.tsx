@@ -8,7 +8,7 @@ import { inRange, rangeOf, type Period } from "@/lib/analytics";
 import { useAdmin } from "./Store";
 import { billText, waLink } from "./receipt";
 import PrintModal from "./PrintModal";
-import { Badge, Btn, Empty, Icon, Modal, Page, PageHead, SearchBox, WaIcon, csv, cx, downloadText, fmtDate, fmtDateTime, fmtTime } from "./kit";
+import { Badge, Btn, Empty, Icon, Modal, Page, PageHead, SearchBox, WaIcon, csv, cx, downloadText, downloadXls, fmtDate, fmtDateTime, fmtTime } from "./kit";
 
 type DateF = Extract<Period, "today" | "week" | "month" | "custom"> | "any";
 
@@ -69,15 +69,14 @@ export default function OrdersPage() {
     [s.bills, type, range, needle],
   );
 
-  const exportCsv = () => {
-      downloadText(
-        `bills-${new Date().toISOString().slice(0, 10)}.csv`,
-        csv([
-          ["Invoice", "Type", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Bill type", "GST %", "Taxable amount", "GST amount", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
-          ...bills.map((b) => [b.invoiceNo, b.source, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.isGst ? "GST" : "Non-GST", b.gstPercent, b.taxableAmount, b.gstAmount, b.total, b.payment, b.cashAmount, b.upiAmount, b.cardAmount, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
-        ]),
-      );
-  };
+  /* One row set, exported either as CSV or as an Excel-openable .xls. */
+  const exportRows = (): (string | number)[][] => [
+    ["Invoice", "Type", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Bill type", "GST %", "Taxable amount", "GST amount", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
+    ...bills.map((b) => [b.invoiceNo, b.source, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.isGst ? "GST" : "Non-GST", b.gstPercent, b.taxableAmount, b.gstAmount, b.total, b.payment, b.cashAmount, b.upiAmount, b.cardAmount, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
+  ];
+  const stamp = () => new Date().toISOString().slice(0, 10);
+  const exportCsv = () => downloadText(`bills-${stamp()}.csv`, csv(exportRows()));
+  const exportXls = () => downloadXls(`bills-${stamp()}.xls`, exportRows(), "Bills");
 
   const count = bills.length;
 
@@ -141,9 +140,14 @@ export default function OrdersPage() {
 
       <div className="mb-3 flex items-center justify-between px-1">
         <span className="text-[12.5px] font-semibold text-slate-600">{count} result(s)</span>
-        <button type="button" onClick={exportCsv} disabled={!count} className="inline-flex items-center gap-1.5 text-[13px] font-bold text-red-600 hover:underline disabled:opacity-40">
-          <Icon name="download" size={15} /> Export CSV
-        </button>
+        <span className="flex items-center gap-4">
+          <button type="button" onClick={exportXls} disabled={!count} className="inline-flex items-center gap-1.5 text-[13px] font-bold text-emerald-700 hover:underline disabled:opacity-40">
+            <Icon name="download" size={15} /> Export Excel
+          </button>
+          <button type="button" onClick={exportCsv} disabled={!count} className="inline-flex items-center gap-1.5 text-[13px] font-bold text-red-600 hover:underline disabled:opacity-40">
+            <Icon name="download" size={15} /> Export CSV
+          </button>
+        </span>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)]">
