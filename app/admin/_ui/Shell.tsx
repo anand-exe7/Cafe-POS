@@ -58,6 +58,20 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const { s, floor, toasts, dismiss, pending, answer, printNode, sound, setSound } = useAdmin();
   const [menu, setMenu] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [rail, setRail] = useState(false); // desktop sidebar collapsed to icons
+  useEffect(() => {
+    try {
+      setRail(localStorage.getItem("adm-rail") === "1");
+    } catch {}
+  }, []);
+  const toggleRail = () =>
+    setRail((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem("adm-rail", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
   const [lastPath, setLastPath] = useState(path);
   if (path !== lastPath) {
     setLastPath(path);
@@ -93,16 +107,18 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const active = (href: string) =>
     href === "/admin" ? path === "/admin" : path.startsWith(href) && !NAV.some((n) => n.href.length > href.length && n.href.startsWith(href) && path.startsWith(n.href));
 
-  const side = (
+  const renderSide = (mini: boolean) => (
     <div className="flex h-full flex-col">
-      <Link href="/admin" className="adm-side__brand flex items-center gap-3 px-5 pb-6 pt-6">
+      <Link href="/admin" title="Chef Loving · Admin" className={cx("adm-side__brand flex items-center gap-3 pb-6 pt-6", mini ? "justify-center px-0" : "px-5")}>
         <Cherry />
-        <span className="leading-tight">
-          <b className="block text-[19px] italic" style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 500 }}>
-            Chef Loving
-          </b>
-          <small className="text-[10px] font-bold uppercase tracking-[0.18em]">Admin console</small>
-        </span>
+        {!mini && (
+          <span className="leading-tight">
+            <b className="block text-[19px] italic" style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 500 }}>
+              Chef Loving
+            </b>
+            <small className="text-[10px] font-bold uppercase tracking-[0.18em]">Admin console</small>
+          </span>
+        )}
       </Link>
       <nav className="flex-1 space-y-1 px-3" aria-label="Admin">
         {NAV.map((n) => {
@@ -111,31 +127,33 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             <Link
               key={n.href}
               href={n.href}
-              className={cx("adm-link flex h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-semibold", on && "is-on")}
+              title={mini ? n.label : undefined}
+              className={cx("adm-link relative flex h-11 items-center rounded-xl text-[14px] font-semibold", on && "is-on", mini ? "justify-center px-0" : "gap-3 px-3")}
             >
               <Icon name={n.icon} size={19} />
-              <span className="flex-1">{n.label}</span>
-              {badge[n.href]}
+              {!mini && <span className="flex-1">{n.label}</span>}
+              {!mini && badge[n.href]}
+              {mini && badge[n.href] && <span className="adm-pulse absolute right-2 top-2 h-2 w-2 rounded-full bg-red-600 text-red-600" />}
             </Link>
           );
         })}
       </nav>
       <div className="adm-side space-y-1 px-3 py-4" style={{ borderTop: "1px solid var(--line-dark)" }}>
-        <button type="button" onClick={() => setSound(!sound)} className="adm-link flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold">
+        <button type="button" onClick={() => setSound(!sound)} title={mini ? (sound ? "Order chime on" : "Order chime off") : undefined} className={cx("adm-link flex h-10 w-full items-center rounded-xl text-[13px] font-semibold", mini ? "justify-center px-0" : "gap-3 px-3")}>
           <Icon name={sound ? "bell" : "belloff"} size={17} />
-          {sound ? "Order chime on" : "Order chime off"}
+          {!mini && (sound ? "Order chime on" : "Order chime off")}
         </button>
-        <a href="/" target="_blank" rel="noopener noreferrer" className="adm-link flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold">
+        <a href="/" target="_blank" rel="noopener noreferrer" title={mini ? "Guest website" : undefined} className={cx("adm-link flex h-10 items-center rounded-xl text-[13px] font-semibold", mini ? "justify-center px-0" : "gap-3 px-3")}>
           <Icon name="globe" size={17} />
-          Guest website
+          {!mini && "Guest website"}
         </a>
-        <button type="button" onClick={() => setSettings(true)} className="adm-link flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold">
+        <button type="button" onClick={() => setSettings(true)} title={mini ? "Settings" : undefined} className={cx("adm-link flex h-10 w-full items-center rounded-xl text-[13px] font-semibold", mini ? "justify-center px-0" : "gap-3 px-3")}>
           <Icon name="sliders" size={17} />
-          Settings
+          {!mini && "Settings"}
         </button>
-        <button type="button" onClick={signOut} className="adm-link flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-semibold">
+        <button type="button" onClick={signOut} title={mini ? "Sign out" : undefined} className={cx("adm-link flex h-10 w-full items-center rounded-xl text-[13px] font-semibold", mini ? "justify-center px-0" : "gap-3 px-3")}>
           <Icon name="logout" size={17} />
-          Sign out
+          {!mini && "Sign out"}
         </button>
       </div>
     </div>
@@ -145,7 +163,18 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     <>
       <div className="adm-app">
         {/* sidebar — desktop */}
-        <aside className="adm-side fixed inset-y-0 left-0 z-40 hidden w-[248px] lg:block">{side}</aside>
+        <aside className={cx("adm-side fixed inset-y-0 left-0 z-40 hidden transition-[width] duration-200 lg:block", rail ? "w-[76px]" : "w-[248px]")}>
+          {renderSide(rail)}
+          <button
+            type="button"
+            onClick={toggleRail}
+            aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
+            title={rail ? "Expand sidebar" : "Collapse sidebar"}
+            className="absolute -right-3 top-[72px] z-50 hidden h-7 w-7 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition hover:text-slate-900 lg:grid"
+          >
+            <Icon name="chevron" size={15} className={cx("transition-transform", rail ? "" : "rotate-180")} />
+          </button>
+        </aside>
 
         {/* top bar — mobile */}
         <header className="adm-side sticky top-0 z-40 flex h-14 items-center gap-3 px-4 lg:hidden">
@@ -164,13 +193,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         {menu && (
           <div className="fixed inset-0 z-50 lg:hidden">
             <button type="button" className="adm-scrim absolute inset-0 bg-slate-900/40" onClick={() => setMenu(false)} aria-label="Close menu" />
-            <aside className="adm-side adm-in absolute inset-y-0 left-0 w-[270px] shadow-2xl">{side}</aside>
+            <aside className="adm-side adm-in absolute inset-y-0 left-0 w-[270px] shadow-2xl">{renderSide(false)}</aside>
           </div>
         )}
 
         {/* main grows to fill whatever the page doesn't use, so the footer sits on
             the bottom edge of a short page instead of floating under the card */}
-        <div className="flex flex-1 flex-col lg:pl-[248px]">
+        <div className={cx("flex flex-1 flex-col transition-[padding] duration-200", rail ? "lg:pl-[76px]" : "lg:pl-[248px]")}>
           <main className="mx-auto w-full max-w-[1480px] flex-1 p-3 sm:p-6">{children}</main>
           <footer className="mx-auto flex w-full max-w-[1480px] flex-col items-center gap-3 border-t border-slate-200 px-6 py-7 text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:flex-row sm:justify-between">
             <span>© 2026 All rights reserved. Chef Loving Cakes.</span>
@@ -184,7 +213,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* toasts */}
-        <div className="pointer-events-none fixed bottom-3 left-3 z-[90] flex w-[min(380px,calc(100%-24px))] flex-col gap-2 sm:bottom-5 sm:left-5 lg:left-[268px]" aria-live="polite">
+        <div className={cx("pointer-events-none fixed bottom-3 left-3 z-[90] flex w-[min(380px,calc(100%-24px))] flex-col gap-2 sm:bottom-5 sm:left-5", rail ? "lg:left-[96px]" : "lg:left-[268px]")} aria-live="polite">
           {toasts.map((t) => (
             <div
               key={t.id}

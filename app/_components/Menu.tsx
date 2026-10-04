@@ -66,12 +66,6 @@ const tenDigits = (v: string) => {
   const bare = d.length === 12 && d.startsWith("91") ? d.slice(2) : d.length === 11 && d.startsWith("0") ? d.slice(1) : d;
   return bare.slice(0, 10);
 };
-const noop = () => () => {};
-const greeting = () => {
-  const h = new Date().getHours();
-  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-};
-
 const time = (t: number) => new Date(t).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 
 /* ---------------- bottom sheet ---------------- */
@@ -228,7 +222,7 @@ export default function Menu({ initial }: { initial: TabView }) {
   const [placed, setPlaced] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const hello = useSyncExternalStore(noop, greeting, () => "Welcome");
+  const hello = "Welcome";
   // null = not typed yet → fall back to what this phone remembered last time
   const [form, setForm] = useState<{ name: string | null; phone: string | null; note: string }>({
     name: null,
