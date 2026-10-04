@@ -223,7 +223,7 @@ export default function AnalyticsPage() {
                   Revenue Trend This Year <span className="text-red-600">{year}</span>
                 </h2>
                 <div className="mb-6 mt-2 flex flex-wrap items-center gap-3">
-                  <b className="adm-num text-[26px] font-extrabold text-slate-900">{rupee(yearTotal)}</b>
+                  <b className="adm-num text-[22px] font-extrabold text-slate-900">{rupee(yearTotal)}</b>
                   <span className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-800">Avg {rupee(Math.round(yearTotal / activeMonths))}/mo</span>
                 </div>
                 <Columns data={months.map((v, i) => ({ label: MONTHS[i], full: `${MONTHS[i]} ${year}`, value: v }))} empty="No revenue yet this year" />
@@ -396,7 +396,7 @@ export default function AnalyticsPage() {
                     <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">{x.l}</span>
                     <span className="text-[15px] font-bold text-red-500">{x.i}</span>
                   </div>
-                  <p className={cx("adm-num mt-3 text-[26px] font-extrabold", x.c)}>{x.v}</p>
+                  <p className={cx("adm-num mt-2 text-[22px] font-extrabold", x.c)}>{x.v}</p>
                 </div>
               ))}
               <div className="pt-1">

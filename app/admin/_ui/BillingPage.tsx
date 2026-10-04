@@ -11,9 +11,9 @@ import { Badge, Btn, Icon, Modal, WaIcon, cx, fmtTime, ago } from "./kit";
 
 type Line = { key: number; productId: string | null; name: string; price: string; qty: number };
 
-const box = "rounded-[22px] border border-slate-100 bg-white p-5 shadow-[0_2px_12px_-4px_rgba(15,23,42,.1)] sm:p-6";
-const lbl = "mb-2 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700";
-const big = "h-[52px] w-full rounded-xl border border-slate-300 bg-white px-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
+const box = "rounded-[18px] border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-4px_rgba(15,23,42,.1)] sm:p-5";
+const lbl = "mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700";
+const big = "h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
 /* Mobiles are stored and sent as a bare 10-digit number — the country code is
    added at the wa.me link, so anything longer here is a prefix to drop, not
    part of the number. Kept in the change handler rather than maxLength so a
@@ -176,12 +176,12 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
   const couponOptions = s.coupons.filter((c) => couponStatus(c) === "active" || c.code === coupon);
 
   return (
-    <div className="adm-in rounded-[28px] bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.1)] sm:p-7">
+    <div className="adm-in rounded-[22px] bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.1)] sm:p-5">
       {/* ---------- header ---------- */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="h-7 w-[5px] rounded-full bg-red-600" />
-          <h1 className="adm-title text-[28px] leading-none text-slate-900">POS Billing Panel</h1>
+          <span className="h-6 w-[4px] rounded-full bg-red-600" />
+          <h1 className="adm-title text-[22px] leading-none text-slate-900">POS Billing Panel</h1>
           <span className="hidden h-5 w-px bg-slate-300 sm:block" />
           <span className="text-[13px] text-slate-500">Quick invoice generator &amp; database synced checkout</span>
         </div>
@@ -200,7 +200,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                 setMode(m);
                 reset();
               }}
-              className={cx("flex h-10 items-center gap-2 rounded-xl px-4 text-[12.5px] font-extrabold uppercase tracking-wide transition", mode === m ? "bg-white text-slate-900 shadow" : "text-slate-500 hover:text-slate-800")}
+              className={cx("flex h-9 items-center gap-2 rounded-xl px-3.5 text-[12px] font-extrabold uppercase tracking-wide transition", mode === m ? "bg-white text-slate-900 shadow" : "text-slate-500 hover:text-slate-800")}
             >
               <span className={cx("h-2 w-2 rounded-full", dot)} />
               {t}
@@ -209,13 +209,13 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_470px]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
         {/* ================= left ================= */}
-        <div className="space-y-5">
+        <div className="space-y-4">
           {mode === "tab" && (
             <section className={box}>
-              <h2 className="mb-4 flex items-center gap-2.5 text-[18px] font-bold text-slate-900">
-                <Icon name="tables" size={20} className="text-red-600" /> Select Open Tab
+              <h2 className="mb-3 flex items-center gap-2.5 text-[16px] font-bold text-slate-900">
+                <Icon name="tables" size={18} className="text-red-600" /> Select Open Tab
               </h2>
               {openTabs.length ? (
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 2xl:grid-cols-4">
@@ -265,10 +265,10 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
           )}
 
           <section className={box}>
-            <h2 className="mb-5 flex items-center gap-2.5 text-[18px] font-bold text-slate-900">
-              <Icon name="users" size={20} className="text-red-600" /> Customer Details
+            <h2 className="mb-4 flex items-center gap-2.5 text-[16px] font-bold text-slate-900">
+              <Icon name="users" size={18} className="text-red-600" /> Customer Details
             </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <label>
                 <span className={lbl}>Customer name</span>
                 <input className={big} value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter name" maxLength={60} />
@@ -281,9 +281,9 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
           </section>
 
           <section className={box}>
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="flex items-center gap-2.5 text-[18px] font-bold text-slate-900">
-                <Icon name="orders" size={20} className="text-red-600" /> Order Items
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2.5 text-[16px] font-bold text-slate-900">
+                <Icon name="orders" size={18} className="text-red-600" /> Order Items
               </h2>
               <div className="flex gap-2">
                 <Btn size="md" className="border-0 bg-slate-100 hover:bg-slate-200" onClick={() => setLines([blank()])}>
@@ -348,7 +348,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
 
         {/* ================= right: summary ================= */}
         <aside className="xl:sticky xl:top-6 xl:self-start">
-          <div className={cx(box, "space-y-5")}>
+          <div className={cx(box, "space-y-4")}>
             <dl className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-slate-50/70 px-4 text-[12px]">
               <div className="flex items-center justify-between py-3">
                 <dt className="font-bold uppercase tracking-[0.12em] text-slate-400">Source</dt>
@@ -385,7 +385,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               <p className="py-3 text-center text-[12.5px] text-slate-400">No items added yet</p>
             )}
 
-            <div className="border-t border-dashed border-slate-200 pt-5">
+            <div className="border-t border-dashed border-slate-200 pt-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Apply coupon</span>
                 <button type="button" className="text-[12px] font-extrabold text-red-600 hover:underline" onClick={() => setNewCp({ code: "", percent: "", minOrder: "" })}>
@@ -393,7 +393,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                 </button>
               </div>
               {f?.session.couponCode && f.session.couponCode === coupon && <p className="mb-2 text-[12px] font-semibold text-sky-600">Applied by the guest from their phone.</p>}
-              <select className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-[14px] font-semibold text-slate-800 outline-none focus:border-red-400" value={coupon} onChange={(e) => setCoupon(e.target.value)}>
+              <select className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-[14px] font-semibold text-slate-800 outline-none focus:border-red-400" value={coupon} onChange={(e) => setCoupon(e.target.value)}>
                 <option value="">No Coupon</option>
                 {couponOptions.map((c) => {
                   const ok = checkCoupon(c, calc.subtotal);
@@ -409,18 +409,18 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               {cp && calc.couponOk && !calc.couponOk.ok && <p className="mt-2 text-[12px] font-semibold text-red-600">{calc.couponOk.reason}</p>}
             </div>
 
-            <div className="border-t border-dashed border-slate-200 pt-5">
+            <div className="border-t border-dashed border-slate-200 pt-4">
               <span className={lbl}>Manual discount</span>
               <div className="flex gap-2">
-                <select className="h-12 w-[84px] rounded-xl border border-red-200 bg-white px-3 text-[14px] font-bold outline-none focus:border-red-400" value={mType} onChange={(e) => setMType(e.target.value as DiscountType)} aria-label="Discount type">
+                <select className="h-11 w-[84px] rounded-xl border border-red-200 bg-white px-3 text-[14px] font-bold outline-none focus:border-red-400" value={mType} onChange={(e) => setMType(e.target.value as DiscountType)} aria-label="Discount type">
                   <option value="amount">₹</option>
                   <option value="percent">%</option>
                 </select>
-                <input type="number" min={0} inputMode="decimal" placeholder="0" className="h-12 flex-1 rounded-xl border border-red-200 bg-white px-4 text-right text-[15px] outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50" value={mVal} onChange={(e) => setMVal(e.target.value)} aria-label="Discount value" />
+                <input type="number" min={0} inputMode="decimal" placeholder="0" className="h-11 flex-1 rounded-xl border border-red-200 bg-white px-4 text-right text-[14px] outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50" value={mVal} onChange={(e) => setMVal(e.target.value)} aria-label="Discount value" />
               </div>
             </div>
 
-            <dl className="space-y-3 border-t border-dashed border-slate-200 pt-5 text-[14px]">
+            <dl className="space-y-3 border-t border-dashed border-slate-200 pt-4 text-[14px]">
               <div className="flex justify-between">
                 <dt className="text-slate-600">
                   Subtotal ({calc.itemCount} items){isGst && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-800/70">excl. GST</span>}
@@ -447,7 +447,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               </div>
             </dl>
 
-            <div className="space-y-3 border-t border-dashed border-slate-200 pt-5">
+            <div className="space-y-3 border-t border-dashed border-slate-200 pt-4">
               <div className="grid grid-cols-2 rounded-full border border-slate-200 bg-white p-1" role="group" aria-label="Bill type">
                 {(
                   [
@@ -480,9 +480,9 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               )}
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-200 pt-5">
-              <span className="text-[17px] font-extrabold uppercase tracking-[0.04em] text-slate-900">Grand total</span>
-              <b className="adm-num text-[26px] font-extrabold text-slate-900">{rupee(calc.total)}</b>
+            <div className="flex items-center justify-between border-t border-slate-200 pt-4">
+              <span className="text-[15px] font-extrabold uppercase tracking-[0.04em] text-slate-900">Grand total</span>
+              <b className="adm-num text-[22px] font-extrabold text-slate-900">{rupee(calc.total)}</b>
             </div>
             {isGst && calc.gstAmount > 0 && <p className="-mt-3 text-right text-[11.5px] text-slate-400">includes {rupee(calc.gstAmount)} GST on {rupee(calc.taxable)}</p>}
 
@@ -500,7 +500,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               {pay === "cash" ? (
                 <>
                   <span className="mb-2 block text-[12px] font-bold text-slate-700">Amount Received (₹)</span>
-                  <input type="number" min={0} inputMode="decimal" placeholder={calc.total ? calc.total.toFixed(2) : "0.00"} className="h-14 w-full rounded-xl border border-red-200 px-4 text-[20px] font-bold outline-none placeholder:text-slate-300 focus:border-red-400 focus:ring-4 focus:ring-red-50" value={received} onChange={(e) => setReceived(e.target.value)} />
+                  <input type="number" min={0} inputMode="decimal" placeholder={calc.total ? calc.total.toFixed(2) : "0.00"} className="h-12 w-full rounded-xl border border-red-200 px-4 text-[18px] font-bold outline-none placeholder:text-slate-300 focus:border-red-400 focus:ring-4 focus:ring-red-50" value={received} onChange={(e) => setReceived(e.target.value)} />
                   {recv > 0 && (
                     <p className={cx("mt-2 flex justify-between text-[13px] font-semibold", change < 0 ? "text-red-600" : "text-emerald-600")}>
                       <span>{change < 0 ? "Still due" : "Change to return"}</span>
@@ -567,7 +567,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               type="button"
               disabled={!okPhone(phone) || busy}
               onClick={() => complete("wa")}
-              className="flex h-14 w-full items-center gap-3 rounded-xl bg-[#22c55e] px-4 text-[15px] font-extrabold text-white transition hover:bg-[#16a34a] disabled:opacity-45"
+              className="flex h-12 w-full items-center gap-3 rounded-xl bg-[#22c55e] px-4 text-[14px] font-extrabold text-white transition hover:bg-[#16a34a] disabled:opacity-45"
             >
               <WaIcon size={20} /> Send to WhatsApp
               {!okPhone(phone) && <span className="ml-auto text-[11px] font-semibold opacity-90">needs a 10-digit mobile</span>}

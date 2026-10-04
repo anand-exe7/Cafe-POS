@@ -159,15 +159,15 @@ export const WaIcon = ({ size = 18 }: { size?: number }) => (
 
 /* ---------------- layout ---------------- */
 export function Page({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-[28px] bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.1)] sm:p-8 adm-in">{children}</div>;
+  return <div className="rounded-[22px] bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,.06),0_8px_24px_-12px_rgba(15,23,42,.1)] sm:p-6 adm-in">{children}</div>;
 }
 
 export function PageHead({ title, sub, right, bar }: { title: string; sub?: React.ReactNode; right?: React.ReactNode; bar?: boolean }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div className={cx(bar && "border-l-[5px] border-red-600 pl-3")}>
-        <h1 className="adm-title text-[32px] leading-[1.05] text-slate-900 sm:text-[40px]">{title}</h1>
-        {sub && <p className="mt-1 text-[14px] text-slate-500">{sub}</p>}
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+      <div className={cx(bar && "border-l-[4px] border-red-600 pl-3")}>
+        <h1 className="adm-title text-[24px] leading-[1.05] text-slate-900 sm:text-[28px]">{title}</h1>
+        {sub && <p className="mt-1 text-[13px] text-slate-500">{sub}</p>}
       </div>
       {right && <div className="flex flex-wrap items-center gap-2">{right}</div>}
     </div>
@@ -176,10 +176,10 @@ export function PageHead({ title, sub, right, bar }: { title: string; sub?: Reac
 
 export function Card({ children, className, title, right }: { children: React.ReactNode; className?: string; title?: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <section className={cx("rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)] sm:p-6", className)}>
+    <section className={cx("rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)] sm:p-5", className)}>
       {(title || right) && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          {title && <h2 className="text-[15px] font-bold text-slate-800">{title}</h2>}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          {title && <h2 className="text-[14px] font-bold text-slate-800">{title}</h2>}
           {right}
         </div>
       )}
@@ -202,17 +202,17 @@ export type Tone = keyof typeof TONES;
 
 export function Kpi({ label, value, hint, icon, tone = "emerald", small }: { label: string; value: React.ReactNode; hint?: string; icon: IconName; tone?: Tone; small?: boolean }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)]">
+    <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)]">
       <div className="flex items-start justify-between gap-3">
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">{label}</span>
         <span className={cx("grid h-7 w-7 shrink-0 place-items-center rounded-full", TONES[tone])}>
           <Icon name={icon} size={14} stroke={2.4} />
         </span>
       </div>
-      <div className={cx("adm-num mt-3 truncate font-extrabold text-slate-900", small ? "text-[22px]" : "text-[26px]")} title={typeof value === "string" ? value : undefined}>
+      <div className={cx("adm-num mt-2 truncate font-extrabold text-slate-900", small ? "text-[19px]" : "text-[23px]")} title={typeof value === "string" ? value : undefined}>
         {value}
       </div>
-      {hint && <p className="mt-2 truncate text-[11px] text-slate-400">{hint}</p>}
+      {hint && <p className="mt-1.5 truncate text-[11px] text-slate-400">{hint}</p>}
     </div>
   );
 }
@@ -244,8 +244,8 @@ export function Btn({
       className={cx(
         "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition active:scale-[.97] disabled:pointer-events-none disabled:opacity-45",
         size === "sm" && "h-8 px-3 text-[12px]",
-        size === "md" && "h-10 px-4 text-[13px]",
-        size === "lg" && "h-12 px-5 text-[14px]",
+        size === "md" && "h-9 px-3.5 text-[13px]",
+        size === "lg" && "h-11 px-5 text-[14px]",
         BTN[kind],
         className,
       )}
@@ -273,11 +273,11 @@ export function Badge({ tone = "slate", children, className }: { tone?: BadgeTon
   );
 }
 
-export const labelCls = "mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600";
+export const labelCls = "mb-1 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600";
 export const inputCls =
-  "h-12 w-full rounded-xl border border-transparent bg-slate-50 px-4 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-300 focus:bg-white focus:ring-4 focus:ring-red-50";
+  "h-10 w-full rounded-xl border border-transparent bg-slate-50 px-3.5 text-[13.5px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-300 focus:bg-white focus:ring-4 focus:ring-red-50";
 export const inputLineCls =
-  "h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
+  "h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[13.5px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
 
 export function Field({ label, children, className, hint }: { label: string; children: React.ReactNode; className?: string; hint?: React.ReactNode }) {
   return (
@@ -293,7 +293,7 @@ export function SearchBox({ value, onChange, placeholder, className }: { value: 
   return (
     <label
       className={cx(
-        "flex h-11 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-4 text-slate-400 shadow-sm transition focus-within:border-red-300 focus-within:ring-4 focus-within:ring-red-50",
+        "flex h-10 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-4 text-slate-400 shadow-sm transition focus-within:border-red-300 focus-within:ring-4 focus-within:ring-red-50",
         className,
       )}
     >
@@ -338,7 +338,7 @@ export function Pills<T extends string>({ label, value, options, onChange, class
 /** Underlined tabs: REVENUE  TODAY'S SALES … */
 export function Tabs<T extends string>({ value, options, onChange }: { value: T; options: { v: T; t: string; n?: number }[]; onChange: (v: T) => void }) {
   return (
-    <div className="mb-7 flex gap-7 overflow-x-auto overflow-y-hidden border-b border-slate-200 adm-scroll">
+    <div className="mb-5 flex gap-6 overflow-x-auto overflow-y-hidden border-b border-slate-200 adm-scroll">
       {options.map((o) => (
         <button
           key={o.v}
@@ -375,9 +375,9 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boo
 
 export function Empty({ icon = "box", title, children }: { icon?: IconName; title: string; children?: React.ReactNode }) {
   return (
-    <div className="grid place-items-center gap-2 px-4 py-12 text-center">
-      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-400">
-        <Icon name={icon} size={22} />
+    <div className="grid place-items-center gap-2 px-4 py-10 text-center">
+      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-50 text-slate-400">
+        <Icon name={icon} size={20} />
       </span>
       <p className="font-semibold text-slate-700">{title}</p>
       {children && <div className="max-w-sm text-[13px] text-slate-500">{children}</div>}
@@ -473,14 +473,14 @@ export function Modal({
       <div className="fixed inset-0 z-[80] grid place-items-center p-3 sm:p-6" role="dialog" aria-modal="true">
         <button type="button" className="adm-scrim absolute inset-0 bg-slate-900/40" onClick={onClose} aria-label="Close" tabIndex={-1} />
         <div ref={box} className={cx("adm-in relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl", wide ? "max-w-3xl" : "max-w-lg")}>
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
-            <h2 className="text-[17px] font-bold text-slate-900">{title}</h2>
-            <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100" aria-label="Close">
-              <Icon name="x" />
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+            <h2 className="text-[16px] font-bold text-slate-900">{title}</h2>
+            <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full text-slate-500 hover:bg-slate-100" aria-label="Close">
+              <Icon name="x" size={16} />
             </button>
           </div>
-          <div className="adm-scroll overflow-y-auto px-6 py-5">{children}</div>
-          {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-4">{footer}</div>}
+          <div className="adm-scroll overflow-y-auto px-5 py-4">{children}</div>
+          {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3.5">{footer}</div>}
         </div>
       </div>
     </Layer>
@@ -522,3 +522,21 @@ export function downloadText(name: string, text: string, type = "text/csv;charse
 }
 
 export const csv = (rows: (string | number)[][]) => rows.map((r) => r.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(",")).join("\n");
+
+/* Excel export without a library: an HTML table saved as .xls. Excel, LibreOffice
+   and Google Sheets all open it with real columns (unlike CSV, which needs a
+   text-to-columns step), and numeric cells stay numeric because they aren't quoted.
+   First row is treated as the header. */
+const xmlEsc = (c: string | number) => String(c).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export function sheetHtml(rows: (string | number)[][], sheet = "Sheet1") {
+  const row = (cells: (string | number)[], tag: "th" | "td") => `<tr>${cells.map((c) => `<${tag}>${xmlEsc(c)}</${tag}>`).join("")}</tr>`;
+  const [head = [], ...body] = rows;
+  return (
+    `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">` +
+    `<head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>` +
+    `<x:Name>${xmlEsc(sheet)}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>` +
+    `</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>` +
+    `<body><table border="1"><thead>${row(head, "th")}</thead><tbody>${body.map((r) => row(r, "td")).join("")}</tbody></table></body></html>`
+  );
+}
+export const downloadXls = (name: string, rows: (string | number)[][], sheet = "Sheet1") => downloadText(name, sheetHtml(rows, sheet), "application/vnd.ms-excel");
