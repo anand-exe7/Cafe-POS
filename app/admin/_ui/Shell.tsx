@@ -11,12 +11,10 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin/orders", label: "Orders", icon: "orders" },
   { href: "/admin/analytics", label: "Analytics", icon: "chart" },
   { href: "/admin", label: "Open tabs", icon: "tables" },
-  { href: "/admin/queue", label: "Live queue", icon: "utensils" },
   { href: "/admin/inventory", label: "Inventory", icon: "box" },
   { href: "/admin/inventory/movements", label: "Stock movement", icon: "list" },
   { href: "/admin/expenses", label: "Expenses", icon: "bag" },
   { href: "/admin/coupons", label: "Coupons", icon: "coupon" },
-  { href: "/admin/users", label: "Users", icon: "users" },
 ];
 
 const Cherry = () => (
@@ -67,17 +65,15 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   }
 
   const fresh = s.orders.filter((o) => o.source === "customer" && o.status === "new").length;
-  const cooking = s.orders.filter((o) => o.source === "customer" && o.status === "preparing").length;
   const billReq = floor.filter((f) => f.billRequested).length;
   const busy = floor.length;
   const low = s.products.filter((p) => p.active && p.stock !== null && p.stock <= p.lowAt).length;
 
   const badge: Record<string, React.ReactNode> = {
-    "/admin": busy ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{busy}</span> : null,
-    "/admin/queue": fresh ? (
+    "/admin": fresh ? (
       <span className="adm-pulse grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white">{fresh}</span>
-    ) : cooking ? (
-      <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700">{cooking}</span>
+    ) : busy ? (
+      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{busy}</span>
     ) : null,
     "/admin/billing": billReq ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-amber-950">{billReq}</span> : null,
     "/admin/inventory": low ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700">{low}</span> : null,
@@ -160,7 +156,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             Chef Loving · Admin
           </b>
           {fresh > 0 && (
-            <Link href="/admin/queue" className="rounded-full bg-red-600 px-3 py-1 text-[12px] font-bold text-white">
+            <Link href="/admin" className="rounded-full bg-red-600 px-3 py-1 text-[12px] font-bold text-white">
               {fresh} new
             </Link>
           )}
