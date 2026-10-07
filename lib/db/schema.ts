@@ -170,6 +170,18 @@ export const expenses = pgTable(
   (t) => [index("expenses_date_idx").on(t.expenseDate)],
 );
 
+/** The shop's own list of expense categories. Expenses keep the category as plain text,
+    so renaming here renames them there too. */
+export const expenseCategories = pgTable(
+  "expense_categories",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    createdAt: ms("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("expense_categories_name_uq").on(sql`lower(${t.name})`)],
+);
+
 /** Every change to a product's tracked stock, newest last. */
 export const stockMovements = pgTable(
   "stock_movements",

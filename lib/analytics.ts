@@ -129,7 +129,15 @@ export function weekly(bills: Bill[], weekStart: number) {
 
 /* ---------------- GST ---------------- */
 
-export type GstRateRow = { rate: number; invoices: number; taxable: number; gst: number; total: number };
+export type GstRateRow = { rate: number; invoices: number; taxable: number; gst: number; total: number; cgst: number; sgst: number };
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+/** Splits GST into its Central and State halves. SGST is what's left after CGST, so the two
+    always add back to the GST charged, even when it doesn't divide into whole paise. */
+export const splitGst = (gst: number) => {
+  const cgst = r2(gst / 2);
+  return { cgst, sgst: r2(gst - cgst) };
+};
 
 /** Full GST picture over the given bills: totals, CGST/SGST halves, and a per-rate breakdown.
    GST in India splits equally into Central (CGST) and State (SGST) halves on an intra-state bill. */
@@ -138,16 +146,20 @@ export function gstReport(bills: Bill[]) {
   const m = new Map<number, GstRateRow>();
   let taxable = 0, gst = 0, revenue = 0;
   for (const b of gstBills) {
-    taxable += b.taxableAmount;
-    gst += b.gstAmount;
-    revenue += b.total;
-    const r = m.get(b.gstPercent) ?? { rate: b.gstPercent, invoices: 0, taxable: 0, gst: 0, total: 0 };
+    taxable = r2(taxable + b.taxableAmount);
+    gst = r2(gst + b.gstAmount);
+    revenue = r2(revenue + b.total);
+    const r = m.get(b.gstPercent) ?? { rate: b.gstPercent, invoices: 0, taxable: 0, gst: 0, total: 0, cgst: 0, sgst: 0 };
+    const half = splitGst(b.gstAmount);
     r.invoices++;
-    r.taxable += b.taxableAmount;
-    r.gst += b.gstAmount;
-    r.total += b.total;
+    r.taxable = r2(r.taxable + b.taxableAmount);
+    r.gst = r2(r.gst + b.gstAmount);
+    r.total = r2(r.total + b.total);
+    r.cgst = r2(r.cgst + half.cgst);
+    r.sgst = r2(r.sgst + half.sgst);
     m.set(b.gstPercent, r);
   }
+  const rates = [...m.values()].sort((a, b) => a.rate - b.rate);
   const nonGstBills = bills.length - gstBills.length;
   return {
     invoices: gstBills.length,
@@ -155,10 +167,10 @@ export function gstReport(bills: Bill[]) {
     taxable,
     gst,
     revenue,
-    cgst: gst / 2,
-    sgst: gst / 2,
+    cgst: rates.reduce((a, r) => r2(a + r.cgst), 0),
+    sgst: rates.reduce((a, r) => r2(a + r.sgst), 0),
     avgRate: taxable > 0 ? (gst / taxable) * 100 : 0,
-    rates: [...m.values()].sort((a, b) => a.rate - b.rate),
+    rates,
   };
 }
 

@@ -275,9 +275,9 @@ export function Badge({ tone = "slate", children, className }: { tone?: BadgeTon
 
 export const labelCls = "mb-1 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600";
 export const inputCls =
-  "h-10 w-full rounded-xl border border-transparent bg-slate-50 px-3.5 text-[13.5px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-300 focus:bg-white focus:ring-4 focus:ring-red-50";
+  "h-10 w-full rounded-xl border border-transparent bg-slate-50 px-3.5 text-[13.5px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-100";
 export const inputLineCls =
-  "h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[13.5px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
+  "h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-[13.5px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100";
 
 export function Field({ label, children, className, hint }: { label: string; children: React.ReactNode; className?: string; hint?: React.ReactNode }) {
   return (
@@ -293,7 +293,7 @@ export function SearchBox({ value, onChange, placeholder, className }: { value: 
   return (
     <label
       className={cx(
-        "flex h-10 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-4 text-slate-400 shadow-sm transition focus-within:border-red-300 focus-within:ring-4 focus-within:ring-red-50",
+        "adm-search flex h-10 items-center gap-2.5 rounded-full bg-slate-50 px-4 text-slate-400 transition focus-within:bg-white focus-within:shadow-[0_2px_10px_-3px_rgba(38,23,15,.22)]",
         className,
       )}
     >
@@ -310,6 +310,30 @@ export function SearchBox({ value, onChange, placeholder, className }: { value: 
         </button>
       )}
     </label>
+  );
+}
+
+/** The From → To picker that opens when a period pill says "Custom". One pill, never wider than
+    its row: the two dates sit side by side and drop onto two lines on a phone. */
+export function DateRange({ from, to, onFrom, onTo, className }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; className?: string }) {
+  const lbl = "flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400";
+  const box = "h-8 w-[8.75rem] min-w-0 rounded-lg bg-transparent px-1 text-[13px] font-semibold text-slate-800 outline-none";
+  return (
+    <div
+      className={cx(
+        "adm-dates adm-in inline-flex max-w-full flex-wrap items-center gap-x-4 gap-y-0.5 rounded-[22px] border border-slate-200 bg-white px-4 py-1 shadow-[0_2px_8px_-2px_rgba(15,23,42,.08)] sm:rounded-full sm:py-1.5",
+        className,
+      )}
+    >
+      <label className={lbl}>
+        From
+        <input type="date" value={from} max={to || undefined} onChange={(e) => onFrom(e.target.value)} className={box} />
+      </label>
+      <label className={lbl}>
+        To
+        <input type="date" value={to} min={from || undefined} onChange={(e) => onTo(e.target.value)} className={box} />
+      </label>
+    </div>
   );
 }
 
@@ -522,21 +546,3 @@ export function downloadText(name: string, text: string, type = "text/csv;charse
 }
 
 export const csv = (rows: (string | number)[][]) => rows.map((r) => r.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(",")).join("\n");
-
-/* Excel export without a library: an HTML table saved as .xls. Excel, LibreOffice
-   and Google Sheets all open it with real columns (unlike CSV, which needs a
-   text-to-columns step), and numeric cells stay numeric because they aren't quoted.
-   First row is treated as the header. */
-const xmlEsc = (c: string | number) => String(c).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-export function sheetHtml(rows: (string | number)[][], sheet = "Sheet1") {
-  const row = (cells: (string | number)[], tag: "th" | "td") => `<tr>${cells.map((c) => `<${tag}>${xmlEsc(c)}</${tag}>`).join("")}</tr>`;
-  const [head = [], ...body] = rows;
-  return (
-    `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">` +
-    `<head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>` +
-    `<x:Name>${xmlEsc(sheet)}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>` +
-    `</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>` +
-    `<body><table border="1"><thead>${row(head, "th")}</thead><tbody>${body.map((r) => row(r, "td")).join("")}</tbody></table></body></html>`
-  );
-}
-export const downloadXls = (name: string, rows: (string | number)[][], sheet = "Sheet1") => downloadText(name, sheetHtml(rows, sheet), "application/vnd.ms-excel");

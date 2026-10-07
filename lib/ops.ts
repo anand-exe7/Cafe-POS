@@ -4,7 +4,7 @@ import { code, uid } from "./seed";
 import { checkCoupon, computeBill, round2, shopToday } from "./money";
 import { hashPassword } from "./auth";
 import { db, type Db, type Tx } from "./db";
-import { bills, coupons, expenses, meta, orders, products, sessions, settings, staffUsers, stockMovements } from "./db/schema";
+import { bills, coupons, expenseCategories, expenses, meta, orders, products, sessions, settings, staffUsers, stockMovements } from "./db/schema";
 import type { AdminState, Bill, StockLedger, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, StockMoveType, TabClose, TabView } from "./types";
 
 /* Every read/write the app makes, with validation. Route handlers are thin wrappers.
@@ -72,7 +72,6 @@ export function menuOf(all: Product[]): MenuItem[] {
       price: p.price,
       description: p.description,
       image: p.image,
-      eggless: p.eggless,
       tags: p.tags,
       soldOut: p.stock !== null && p.stock <= 0,
       left: p.stock !== null && p.stock <= p.lowAt ? p.stock : null,
@@ -266,7 +265,7 @@ export function removeCoupon(raw: unknown) {
 /* ================================ admin side ================================ */
 
 export async function adminState(): Promise<AdminState> {
-  const [m, st, prods, sess, ords, bls, cps, us, exps] = await Promise.all([
+  const [m, st, prods, sess, ords, bls, cps, us, exps, ecats] = await Promise.all([
     db.select().from(meta).where(eq(meta.id, 1)),
     db.select().from(settings).where(eq(settings.id, 1)),
     db.select().from(products).orderBy(asc(products.createdAt), asc(products.id)),
@@ -276,6 +275,7 @@ export async function adminState(): Promise<AdminState> {
     db.select().from(coupons).orderBy(desc(coupons.createdAt), desc(coupons.id)),
     db.select().from(staffUsers).orderBy(asc(staffUsers.createdAt), asc(staffUsers.id)),
     db.select().from(expenses).orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
+    db.select().from(expenseCategories).orderBy(asc(expenseCategories.createdAt), asc(expenseCategories.name)),
   ]);
   return {
     version: m[0]?.version ?? 0,
@@ -288,6 +288,7 @@ export async function adminState(): Promise<AdminState> {
     coupons: cps,
     users: us.map(publicUser),
     expenses: exps,
+    expenseCategories: ecats,
   };
 }
 
@@ -296,7 +297,7 @@ export async function adminState(): Promise<AdminState> {
 export async function stockLedger(p: URLSearchParams): Promise<StockLedger> {
   const from = Number(p.get("from")) || null;
   const to = Number(p.get("to")) || null;
-  const size = Math.min(100, Math.max(1, Math.floor(Number(p.get("size"))) || 20));
+  const size = Math.min(p.get("export") ? 5000 : 100, Math.max(1, Math.floor(Number(p.get("size"))) || 20)); // ?export=1 lifts the page cap for the CSV download
   const type = p.get("type") ?? "all";
   const pid = p.get("pid") ?? "all";
   const q = (p.get("q") ?? "").trim().slice(0, 80).replace(/[\\%_]/g, (c) => "\\" + c);
@@ -350,9 +351,11 @@ const logMove = (tx: Tx, p: { id: string; name: string }, m: Move, qty: number, 
 
 /** Moves stock for many products in one statement (untracked stock stays null) and
     writes what really changed — after clamping at zero — to the stock ledger. */
-async function moveStock(tx: Tx, deltas: Map<string, number>, m: Move, stamp?: number) {
+type Moved = { id: string; name: string; new_stock: number | null; old_stock: number | null };
+
+async function moveStock(tx: Tx, deltas: Map<string, number>, m: Move, stamp?: number): Promise<Moved[]> {
   const rows = [...deltas].filter(([, d]) => d !== 0);
-  if (!rows.length) return;
+  if (!rows.length) return [];
   const at = stamp ?? Date.now();
   const vals = sql.join(rows.map(([id, d]) => sql`(${id}::text, ${d}::int)`), sql`, `);
   const res = await tx.execute(sql`
@@ -366,11 +369,13 @@ async function moveStock(tx: Tx, deltas: Map<string, number>, m: Move, stamp?: n
       where p.id = v.id
       returning p.id, p.name, p.stock)
     select upd.id, upd.name, upd.stock as new_stock, old.stock as old_stock from upd join old on old.id = upd.id`);
-  const moved = (res.rows as { id: string; name: string; new_stock: number | null; old_stock: number | null }[]).filter((r) => r.new_stock !== null && r.old_stock !== null && r.new_stock !== r.old_stock);
+  const all = res.rows as Moved[];
+  const moved = all.filter((r) => r.new_stock !== null && r.old_stock !== null && r.new_stock !== r.old_stock);
   if (moved.length)
     await tx.insert(stockMovements).values(
       moved.map((r) => ({ id: uid(), productId: r.id, productName: r.name, type: m.type, qty: r.new_stock! - r.old_stock!, balanceAfter: r.new_stock!, note: m.note ?? "", ref: m.ref ?? "", createdAt: at })),
     );
+  return all;
 }
 
 const tally = (items: OrderItem[], sign: 1 | -1, into = new Map<string, number>()) => {
@@ -397,7 +402,6 @@ async function saveProduct(tx: Tx, a: Args) {
     lowAt: int(a.lowAt, 0, 9999, 4),
     description: str(a.description, 240),
     image: str(a.image, 600),
-    eggless: !!a.eggless,
     tags: Array.isArray(a.tags) ? (a.tags as unknown[]).map((x) => str(x, 20).toLowerCase()).filter(Boolean).slice(0, 6) : [],
     active: a.active !== false,
   };
@@ -570,6 +574,14 @@ async function createBill(tx: Tx, a: Args): Promise<Bill> {
   return bill;
 }
 
+/** The saved spelling of a category, adding it to the shop's list if it is new. */
+async function ensureExpenseCategory(tx: Tx, name: string, now: number): Promise<string> {
+  const hit = await first(tx.select().from(expenseCategories).where(sql`lower(${expenseCategories.name}) = ${name.toLowerCase()}`));
+  if (hit) return hit.name;
+  await tx.insert(expenseCategories).values({ id: uid(), name, createdAt: now }).onConflictDoNothing();
+  return name;
+}
+
 export function adminOp(op: string, a: Args) {
   return mutate(async (tx) => {
     const now = Date.now();
@@ -658,6 +670,19 @@ export function adminOp(op: string, a: Args) {
         return null;
       }
       case "product.stock": {
+        /* The +/- steppers and the Stock in/out form only ever send a delta. That takes
+           two statements (update-and-read-back, then the ledger row) instead of the
+           read, update and insert below — every statement is a round trip to the
+           database, and this is the busiest button in Inventory. A product whose stock
+           isn't tracked yet falls through to the full path, which turns tracking on. */
+        const delta = a.set === undefined ? int(a.delta, -99999, 99999, 0) : 0;
+        if (delta !== 0) {
+          const note = str(a.note, 120);
+          const type: StockMoveType = delta > 0 ? "added" : a.move === "removed" ? "removed" : "adjustment";
+          const fallback: Record<string, string> = { added: "Stock added", removed: "Stock removed", adjustment: "Stock corrected" };
+          const [hit] = await moveStock(tx, new Map([[id, delta]]), { type, note: note || fallback[type] }, now);
+          if (hit && hit.new_stock !== null) return { id: hit.id, stock: hit.new_stock };
+        }
         const p = await must(tx.select().from(products).where(eq(products.id, id)), "Product");
         let stock: number | null;
         if (a.set === null) stock = null;
@@ -706,7 +731,8 @@ export function adminOp(op: string, a: Args) {
         if (!(amount > 0)) throw new ApiError("Enter an amount greater than zero.");
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ApiError("Pick a valid date.");
         const mode = String(a.paymentMode);
-        const fields = { title, category: str(a.category, 40) || "General", amount, paymentMode: ["cash", "upi", "card", "bank"].includes(mode) ? mode : "cash", notes: str(a.notes, 300), expenseDate: date };
+        const category = await ensureExpenseCategory(tx, str(a.category, 40) || "General", now);
+        const fields = { title, category, amount, paymentMode: ["cash", "upi", "card", "bank"].includes(mode) ? mode : "cash", notes: str(a.notes, 300), expenseDate: date };
         if (id) {
           await must(tx.select().from(expenses).where(eq(expenses.id, id)), "Expense");
           const [x] = await tx.update(expenses).set(fields).where(eq(expenses.id, id)).returning();
@@ -714,6 +740,32 @@ export function adminOp(op: string, a: Args) {
         }
         const [x] = await tx.insert(expenses).values({ id: uid(), ...fields, createdAt: now }).returning();
         return x;
+      }
+      case "expcat.save": {
+        const name = str(a.name, 40);
+        if (!name) throw new ApiError("Give the category a name.");
+        const clash = await first(tx.select().from(expenseCategories).where(sql`lower(${expenseCategories.name}) = ${name.toLowerCase()}`));
+        if (clash && clash.id !== id) throw new ApiError(`"${clash.name}" already exists.`);
+        if (id) {
+          const before = await must(tx.select().from(expenseCategories).where(eq(expenseCategories.id, id)), "Category");
+          const [c] = await tx.update(expenseCategories).set({ name }).where(eq(expenseCategories.id, id)).returning();
+          // expenses carry the category as text, so they follow the rename
+          if (before.name !== name) await tx.update(expenses).set({ category: name }).where(eq(expenses.category, before.name));
+          return c;
+        }
+        const [c] = await tx.insert(expenseCategories).values({ id: uid(), name, createdAt: now }).returning();
+        return c;
+      }
+      case "expcat.delete": {
+        const c = await must(tx.select().from(expenseCategories).where(eq(expenseCategories.id, id)), "Category");
+        const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(expenses).where(eq(expenses.category, c.name));
+        if (n > 0) {
+          const target = await first(tx.select().from(expenseCategories).where(and(eq(expenseCategories.id, str(a.moveTo, 40)), ne(expenseCategories.id, c.id))));
+          if (!target) throw new ApiError(`${n} expense${n === 1 ? " uses" : "s use"} “${c.name}” — choose a category to move ${n === 1 ? "it" : "them"} to.`);
+          await tx.update(expenses).set({ category: target.name }).where(eq(expenses.category, c.name));
+        }
+        await tx.delete(expenseCategories).where(eq(expenseCategories.id, c.id));
+        return null;
       }
       case "expense.delete": {
         await must(tx.select().from(expenses).where(eq(expenses.id, id)), "Expense");

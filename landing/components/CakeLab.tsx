@@ -41,7 +41,6 @@ const TOPPINGS = {
 type ToppingId = keyof typeof TOPPINGS;
 
 const DIETS = {
-  eggless: { label: "Eggless", flag: "#f5ecdc" },
   vegan: { label: "Vegan", flag: "#b3c68b" },
   glutenfree: { label: "Gluten-free", flag: "#e2a75c" },
   sugarfree: { label: "Sugar-free", flag: "#f2b8b5" },
