@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Product } from "@/lib/types";
+import type { AdminState, Product } from "@/lib/types";
 import { rupee } from "@/lib/money";
 import { useAdmin } from "./Store";
 import { Badge, Btn, Empty, Field, Icon, Kpi, Modal, Page, PageHead, SearchBox, Switch, cx, inputCls } from "./kit";
@@ -16,12 +16,11 @@ type Form = {
   lowAt: string;
   description: string;
   image: string;
-  eggless: boolean;
   tags: string[];
   active: boolean;
 };
 
-const EMPTY: Form = { name: "", category: "", price: "", track: true, stock: "10", lowAt: "4", description: "", image: "", eggless: true, tags: [], active: true };
+const EMPTY: Form = { name: "", category: "", price: "", track: true, stock: "10", lowAt: "4", description: "", image: "", tags: [], active: true };
 const TAGS = [
   ["bestseller", "★ Bestseller"],
   ["new", "New"],
@@ -32,6 +31,14 @@ const th = "px-4 py-3.5 text-left text-[10.5px] font-bold uppercase tracking-[0.
 const td = "px-4 py-3 text-[13px]";
 
 type StockFilter = "all" | "menu" | "hidden" | "low" | "out";
+
+/* What the screen should show the instant a stock button is pressed; the server
+   confirms (and corrects, if it has to) in the background. */
+const withStock = (id: string, next: (now: number) => number) => (st: AdminState): AdminState => ({
+  ...st,
+  products: st.products.map((p) => (p.id === id && p.stock !== null ? { ...p, stock: Math.max(0, next(p.stock)) } : p)),
+});
+const stepBy = (id: string, delta: number) => ({ optimistic: withStock(id, (n) => n + delta) });
 
 function StockCell({ p }: { p: Product }) {
   const { act } = useAdmin();
@@ -44,18 +51,18 @@ function StockCell({ p }: { p: Product }) {
     );
   const tone = p.stock <= 0 ? "text-red-600" : p.stock <= p.lowAt ? "text-amber-600" : "text-slate-900";
   const commit = () => {
-    if (edit !== null && edit.trim() !== "" && Number(edit) !== p.stock) act("product.stock", { id: p.id, set: Number(edit) });
+    if (edit !== null && edit.trim() !== "" && Number(edit) !== p.stock) act("product.stock", { id: p.id, set: Number(edit) }, { optimistic: withStock(p.id, () => Number(edit)) });
     setEdit(null);
   };
   return (
     <span className="inline-flex items-center gap-1">
-      <button type="button" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40" onClick={() => act("product.stock", { id: p.id, delta: -1 })} disabled={p.stock <= 0} aria-label={`One less ${p.name}`}>
+      <button type="button" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40" onClick={() => act("product.stock", { id: p.id, delta: -1 }, stepBy(p.id, -1))} disabled={p.stock <= 0} aria-label={`One less ${p.name}`}>
         <Icon name="minus" size={13} />
       </button>
       {edit !== null ? (
         <input
           autoFocus
-          className="h-7 w-14 rounded-lg border border-red-300 text-center text-[13px] font-bold outline-none"
+          className="h-7 w-14 rounded-lg border border-slate-400 text-center text-[13px] font-bold outline-none"
           value={edit}
           inputMode="numeric"
           onChange={(e) => setEdit(e.target.value.replace(/\D/g, ""))}
@@ -70,7 +77,7 @@ function StockCell({ p }: { p: Product }) {
           {p.stock}
         </button>
       )}
-      <button type="button" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => act("product.stock", { id: p.id, delta: 1 })} aria-label={`One more ${p.name}`}>
+      <button type="button" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => act("product.stock", { id: p.id, delta: 1 }, stepBy(p.id, 1))} aria-label={`One more ${p.name}`}>
         <Icon name="plus" size={13} />
       </button>
     </span>
@@ -122,7 +129,6 @@ export default function InventoryPage() {
             lowAt: String(p.lowAt),
             description: p.description,
             image: p.image,
-            eggless: p.eggless,
             tags: p.tags,
             active: p.active,
           }
@@ -151,15 +157,16 @@ export default function InventoryPage() {
 
   const moveQty = Math.floor(Number(move?.qty) || 0);
   const moveBad = !move || moveQty <= 0 || (move.dir === "removed" && moveQty > (move.p.stock ?? 0));
+  /* The modal closes and the number changes at once; if the server refuses, the form
+     comes back with what was typed. */
   const saveMove = async () => {
     if (!move || moveBad) return;
-    setBusy(true);
-    const r = await act<Product>("product.stock", { id: move.p.id, delta: move.dir === "added" ? moveQty : -moveQty, move: move.dir, note: move.note });
-    setBusy(false);
-    if (r.ok) {
-      toast({ kind: "ok", title: `${move.dir === "added" ? "Added" : "Removed"} ${moveQty} ${move.dir === "added" ? "to" : "from"} ${move.p.name}` });
-      setMove(null);
-    }
+    const m = move;
+    const delta = m.dir === "added" ? moveQty : -moveQty;
+    setMove(null);
+    const r = await act("product.stock", { id: m.p.id, delta, move: m.dir, note: m.note }, stepBy(m.p.id, delta));
+    if (r.ok) toast({ kind: "ok", title: `${m.dir === "added" ? "Added" : "Removed"} ${Math.abs(delta)} ${m.dir === "added" ? "to" : "from"} ${m.p.name}` });
+    else setMove(m);
   };
 
   const save = async () => {
@@ -238,9 +245,6 @@ export default function InventoryPage() {
                       {p.image ? <img src={thumb(p.image)} alt="" className="h-11 w-11 rounded-xl object-cover" loading="lazy" /> : <span className="grid h-11 w-11 place-items-center rounded-xl bg-slate-100 font-bold text-slate-400">{p.name[0]}</span>}
                       <div className="min-w-0">
                         <p className="flex items-center gap-2 font-semibold text-slate-900">
-                          <span className={cx("grid h-3.5 w-3.5 place-items-center rounded-[3px] border-[1.5px]", p.eggless ? "border-green-700" : "border-amber-700")} title={p.eggless ? "Eggless" : "Contains egg"}>
-                            <span className={cx("h-1.5 w-1.5 rounded-full", p.eggless ? "bg-green-700" : "bg-amber-700")} />
-                          </span>
                           {p.name}
                         </p>
                         <p className="mt-0.5 flex flex-wrap gap-1">
@@ -305,7 +309,7 @@ export default function InventoryPage() {
         footer={
           <>
             <Btn onClick={() => setMove(null)}>Cancel</Btn>
-            <Btn kind="red" disabled={busy || moveBad} onClick={saveMove}>
+            <Btn kind="red" disabled={moveBad} onClick={saveMove}>
               {move?.dir === "removed" ? "Remove stock" : "Add stock"}
             </Btn>
           </>
@@ -456,10 +460,6 @@ export default function InventoryPage() {
               <div className="aspect-square overflow-hidden rounded-2xl bg-slate-100">
                 {form.image ? <img src={form.image} alt="" className="h-full w-full object-cover" /> : <span className="grid h-full place-items-center text-[12px] text-slate-400">No image</span>}
               </div>
-              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-[13px] font-semibold text-slate-700">
-                Eggless
-                <Switch on={form.eggless} onChange={(v) => setForm({ ...form, eggless: v })} label="Eggless" />
-              </label>
               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-[13px] font-semibold text-slate-700">
                 Show on menu
                 <Switch on={form.active} onChange={(v) => setForm({ ...form, active: v })} label="Show on menu" />

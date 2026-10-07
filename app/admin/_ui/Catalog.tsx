@@ -101,7 +101,7 @@ export default function Catalog({
               <div
                 className={cx(
                   "flex items-center gap-3 rounded-2xl border p-2.5 transition",
-                  n ? "border-red-300 bg-red-50/40" : "border-slate-100 hover:border-slate-300",
+                  n ? "border-slate-400 bg-slate-50" : "border-slate-100 hover:border-slate-300",
                   out && onAdd && "opacity-50",
                 )}
               >
