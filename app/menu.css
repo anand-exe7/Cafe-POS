@@ -313,8 +313,9 @@
   color: rgba(245, 236, 220, 0.55);
   transition: box-shadow 0.25s;
 }
+/* focus just lifts the hairline — no red ring around the search */
 .tm-search:focus-within {
-  box-shadow: 0 0 0 2px var(--cherry) inset;
+  box-shadow: 0 0 0 1px rgba(245, 236, 220, 0.32) inset;
 }
 .tm-search input {
   flex: 1;
@@ -327,53 +328,6 @@
 }
 .tm-search input::placeholder {
   color: rgba(245, 236, 220, 0.4);
-}
-.tm-egg {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  height: 50px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: 16px;
-  background: var(--cocoa-2);
-  box-shadow: 0 0 0 1px var(--line-dark) inset;
-  color: var(--cream);
-  font: 500 14px/1 var(--body);
-  cursor: pointer;
-  transition: background-color 0.25s, color 0.25s;
-}
-.tm-egg[aria-pressed="true"] {
-  background: var(--pistachio);
-  color: var(--cocoa);
-}
-
-/* veg / egg marks — the square-and-dot convention Indian menus use */
-.tm-mark {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid currentColor;
-  border-radius: 3px;
-  vertical-align: -1px;
-}
-.tm-mark::after {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.tm-mark--veg {
-  color: #2f8a3b;
-}
-.tm-mark--egg {
-  color: #b5651d;
-}
-.tm-egg[aria-pressed="true"] .tm-mark--veg {
-  color: var(--cocoa);
 }
 
 /* ---------- category rail ---------- */

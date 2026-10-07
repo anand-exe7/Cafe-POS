@@ -13,7 +13,7 @@ type Line = { key: number; productId: string | null; name: string; price: string
 
 const box = "rounded-[18px] border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-4px_rgba(15,23,42,.1)] sm:p-5";
 const lbl = "mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700";
-const big = "h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50";
+const big = "h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100";
 /* Mobiles are stored and sent as a bare 10-digit number — the country code is
    added at the wa.me link, so anything longer here is a prefix to drop, not
    part of the number. Kept in the change handler rather than maxLength so a
@@ -226,7 +226,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                       onClick={() => pickTab(x)}
                       className={cx(
                         "relative rounded-2xl border p-3 text-left transition",
-                        sel === x.session.id ? "border-red-400 bg-red-50 ring-4 ring-red-50" : "border-slate-200 hover:border-slate-400",
+                        sel === x.session.id ? "border-slate-700 bg-slate-50 ring-4 ring-slate-100" : "border-slate-200 hover:border-slate-400",
                       )}
                     >
                       <span className="flex items-center justify-between">
@@ -254,7 +254,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                 </div>
               )}
               {lost && (
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
                   <span>That tab was just closed from another screen.</span>
                   <Btn size="sm" onClick={() => reset()}>
                     Start over
@@ -275,7 +275,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               </label>
               <label>
                 <span className={lbl}>Mobile number (WhatsApp)</span>
-                <input className={cx(big, phone && !okPhone(phone) && "border-red-400")} value={phone} onChange={(e) => setPhone(tenDigits(e.target.value))} placeholder="Enter 10-digit number" inputMode="numeric" autoComplete="tel-national" />
+                <input className={cx(big, phone && !okPhone(phone) && "border-amber-500")} value={phone} onChange={(e) => setPhone(tenDigits(e.target.value))} placeholder="Enter 10-digit number" inputMode="numeric" autoComplete="tel-national" />
               </label>
             </div>
           </section>
@@ -298,12 +298,12 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               {lines.map((l) => (
                 <div key={l.key} className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 pb-2 last:border-0 last:pb-0">
                   <input
-                    className="h-10 min-w-[180px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                    className="h-10 min-w-[180px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
                     placeholder="Item name / description…"
                     value={l.name}
                     onChange={(e) => setLine(l.key, { name: e.target.value })}
                   />
-                  <button type="button" onClick={() => setPicker(l.key)} className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 text-[13px] font-bold text-red-600 transition hover:bg-red-100">
+                  <button type="button" onClick={() => setPicker(l.key)} className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-700 transition hover:bg-slate-100">
                     <Icon name="list" size={15} /> Catalog
                   </button>
                   <input
@@ -311,31 +311,31 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                     min={0}
                     step="0.5"
                     inputMode="decimal"
-                    className="h-10 w-24 rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                    className="h-10 w-24 rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-100"
                     placeholder="₹ Price"
                     value={l.price}
                     onChange={(e) => setLine(l.key, { price: e.target.value })}
                     aria-label="Price"
                   />
-                  <div className="flex h-10 w-[112px] items-center overflow-hidden rounded-xl border border-red-200 bg-white">
-                    <button type="button" className="h-full w-8 text-[16px] font-bold text-red-600 hover:bg-red-50" onClick={() => setLine(l.key, { qty: Math.max(1, l.qty - 1) })} aria-label="Less">
+                  <div className="flex h-10 w-[112px] items-center overflow-hidden rounded-xl border border-slate-300 bg-white">
+                    <button type="button" className="h-full w-8 text-[16px] font-bold text-slate-700 hover:bg-slate-50" onClick={() => setLine(l.key, { qty: Math.max(1, l.qty - 1) })} aria-label="Less">
                       −
                     </button>
                     <input
-                      className="h-full w-full min-w-0 border-x border-red-100 text-center text-[14px] font-bold outline-none"
+                      className="h-full w-full min-w-0 border-x border-slate-200 text-center text-[14px] font-bold outline-none"
                       value={l.qty}
                       inputMode="numeric"
                       onChange={(e) => setLine(l.key, { qty: Math.max(1, Math.min(999, parseInt(e.target.value.replace(/\D/g, "")) || 1)) })}
                       aria-label="Quantity"
                     />
-                    <button type="button" className="h-full w-8 text-[16px] font-bold text-red-600 hover:bg-red-50" onClick={() => setLine(l.key, { qty: Math.min(999, l.qty + 1) })} aria-label="More">
+                    <button type="button" className="h-full w-8 text-[16px] font-bold text-slate-700 hover:bg-slate-50" onClick={() => setLine(l.key, { qty: Math.min(999, l.qty + 1) })} aria-label="More">
                       +
                     </button>
                   </div>
                   <button
                     type="button"
                     onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [blank()]))}
-                    className="grid h-10 w-10 place-items-center rounded-xl border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
+                    className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                     aria-label="Remove item"
                   >
                     <Icon name="trash" size={16} />
@@ -393,7 +393,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                 </button>
               </div>
               {f?.session.couponCode && f.session.couponCode === coupon && <p className="mb-2 text-[12px] font-semibold text-sky-600">Applied by the guest from their phone.</p>}
-              <select className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-[14px] font-semibold text-slate-800 outline-none focus:border-red-400" value={coupon} onChange={(e) => setCoupon(e.target.value)}>
+              <select className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-[14px] font-semibold text-slate-800 outline-none focus:border-slate-400" value={coupon} onChange={(e) => setCoupon(e.target.value)}>
                 <option value="">No Coupon</option>
                 {couponOptions.map((c) => {
                   const ok = checkCoupon(c, calc.subtotal);
@@ -412,11 +412,11 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
             <div className="border-t border-dashed border-slate-200 pt-4">
               <span className={lbl}>Manual discount</span>
               <div className="flex gap-2">
-                <select className="h-11 w-[84px] rounded-xl border border-red-200 bg-white px-3 text-[14px] font-bold outline-none focus:border-red-400" value={mType} onChange={(e) => setMType(e.target.value as DiscountType)} aria-label="Discount type">
+                <select className="h-11 w-[84px] rounded-xl border border-slate-300 bg-white px-3 text-[14px] font-bold outline-none focus:border-slate-400" value={mType} onChange={(e) => setMType(e.target.value as DiscountType)} aria-label="Discount type">
                   <option value="amount">₹</option>
                   <option value="percent">%</option>
                 </select>
-                <input type="number" min={0} inputMode="decimal" placeholder="0" className="h-11 flex-1 rounded-xl border border-red-200 bg-white px-4 text-right text-[14px] outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50" value={mVal} onChange={(e) => setMVal(e.target.value)} aria-label="Discount value" />
+                <input type="number" min={0} inputMode="decimal" placeholder="0" className="h-11 flex-1 rounded-xl border border-slate-300 bg-white px-4 text-right text-[14px] outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-100" value={mVal} onChange={(e) => setMVal(e.target.value)} aria-label="Discount value" />
               </div>
             </div>
 
@@ -442,7 +442,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               <div className="flex items-center justify-between">
                 <dt className="text-slate-600">Extra charges</dt>
                 <dd>
-                  <input type="number" min={0} inputMode="decimal" placeholder="0" className="h-10 w-24 rounded-lg border border-slate-300 px-3 text-right text-[14px] outline-none focus:border-red-400" value={extra} onChange={(e) => setExtra(e.target.value)} aria-label="Extra charges" />
+                  <input type="number" min={0} inputMode="decimal" placeholder="0" className="h-10 w-24 rounded-lg border border-slate-300 px-3 text-right text-[14px] outline-none focus:border-slate-400" value={extra} onChange={(e) => setExtra(e.target.value)} aria-label="Extra charges" />
                 </dd>
               </div>
             </dl>
@@ -472,7 +472,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                     GST <span className="text-[10px] font-bold uppercase tracking-wide text-amber-800/70">(added)</span>
                   </span>
                   <span className="flex items-center gap-2">
-                    <input type="number" min={0} max={100} step="0.1" inputMode="decimal" className="h-10 w-20 rounded-lg border border-slate-300 px-3 text-right text-[14px] font-bold outline-none focus:border-red-400" value={gstPct} onChange={(e) => setGstPct(e.target.value)} aria-label="GST percent" />
+                    <input type="number" min={0} max={100} step="0.1" inputMode="decimal" className="h-10 w-20 rounded-lg border border-slate-300 px-3 text-right text-[14px] font-bold outline-none focus:border-slate-400" value={gstPct} onChange={(e) => setGstPct(e.target.value)} aria-label="GST percent" />
                     <span className="text-slate-600">%</span>
                     <b className="adm-num w-24 text-right font-semibold text-slate-700">{rupee(calc.gstAmount)}</b>
                   </span>
@@ -500,7 +500,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               {pay === "cash" ? (
                 <>
                   <span className="mb-2 block text-[12px] font-bold text-slate-700">Amount Received (₹)</span>
-                  <input type="number" min={0} inputMode="decimal" placeholder={calc.total ? calc.total.toFixed(2) : "0.00"} className="h-12 w-full rounded-xl border border-red-200 px-4 text-[18px] font-bold outline-none placeholder:text-slate-300 focus:border-red-400 focus:ring-4 focus:ring-red-50" value={received} onChange={(e) => setReceived(e.target.value)} />
+                  <input type="number" min={0} inputMode="decimal" placeholder={calc.total ? calc.total.toFixed(2) : "0.00"} className="h-12 w-full rounded-xl border border-slate-300 px-4 text-[18px] font-bold outline-none placeholder:text-slate-300 focus:border-slate-400 focus:ring-4 focus:ring-slate-100" value={received} onChange={(e) => setReceived(e.target.value)} />
                   {recv > 0 && (
                     <p className={cx("mt-2 flex justify-between text-[13px] font-semibold", change < 0 ? "text-red-600" : "text-emerald-600")}>
                       <span>{change < 0 ? "Still due" : "Change to return"}</span>
@@ -514,11 +514,11 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                   <div className="grid grid-cols-2 gap-2">
                     <label>
                       <span className="mb-1 block text-[12px] font-bold text-slate-700">Cash (₹)</span>
-                      <input type="number" min={0} inputMode="decimal" placeholder="0.00" className="h-12 w-full rounded-xl border border-red-200 px-3 text-[16px] font-bold outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50" value={splitCash} onChange={(e) => (setSplitCash(e.target.value), setSplitCard(rest(e.target.value)))} />
+                      <input type="number" min={0} inputMode="decimal" placeholder="0.00" className="h-12 w-full rounded-xl border border-slate-300 px-3 text-[16px] font-bold outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-100" value={splitCash} onChange={(e) => (setSplitCash(e.target.value), setSplitCard(rest(e.target.value)))} />
                     </label>
                     <label>
                       <span className="mb-1 block text-[12px] font-bold text-slate-700">Card (₹)</span>
-                      <input type="number" min={0} inputMode="decimal" placeholder="0.00" className="h-12 w-full rounded-xl border border-red-200 px-3 text-[16px] font-bold outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50" value={splitCard} onChange={(e) => (setSplitCard(e.target.value), setSplitCash(rest(e.target.value)))} />
+                      <input type="number" min={0} inputMode="decimal" placeholder="0.00" className="h-12 w-full rounded-xl border border-slate-300 px-3 text-[16px] font-bold outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-100" value={splitCard} onChange={(e) => (setSplitCard(e.target.value), setSplitCash(rest(e.target.value)))} />
                     </label>
                   </div>
                   {(sCash > 0 || sCard > 0) && (

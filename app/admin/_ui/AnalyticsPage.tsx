@@ -3,11 +3,11 @@
 import { useMemo, useState } from "react";
 import type { Bill } from "@/lib/types";
 import { rupee } from "@/lib/money";
-import { completedIn, customerStats, expensesIn, gstReport, isoWeek, itemStats, monthly, rangeOf, startOfWeek, paymentStats, summary, weekly, type Period } from "@/lib/analytics";
+import { completedIn, customerStats, expensesIn, gstReport, isoWeek, itemStats, monthly, rangeOf, splitGst, startOfWeek, paymentStats, summary, weekly, type Period } from "@/lib/analytics";
 import Link from "next/link";
 import { useAdmin } from "./Store";
 import { useLedger } from "./ledger";
-import { Badge, Card, Empty, Kpi, Page, PageHead, Pills, SearchBox, Switch, Tabs, cx, fmtDate, fmtTime } from "./kit";
+import { Badge, Btn, Card, DateRange, Empty, Kpi, Page, PageHead, Pills, SearchBox, Switch, Tabs, csv, cx, downloadText, fmtDate, fmtTime } from "./kit";
 
 type Tab = "revenue" | "today" | "products" | "customers" | "coupons";
 
@@ -112,12 +112,12 @@ function GstSplit({ gstN, gstRev, gst, taxable, nonGstN, nonGstRev }: { gstN: nu
 }
 
 /** Per-rate GST table: how much taxable, CGST, SGST and GST fell under each rate. */
-function GstByRate({ rates }: { rates: { rate: number; invoices: number; taxable: number; gst: number; total: number }[] }) {
+function GstByRate({ rates }: { rates: { rate: number; invoices: number; taxable: number; gst: number; total: number; cgst: number; sgst: number }[] }) {
   if (!rates.length) return <p className="py-8 text-center text-[13px] text-slate-400">No GST invoices in this period yet.</p>;
   const cell = "px-3 py-2.5 text-[12.5px] whitespace-nowrap";
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-100 adm-scroll">
-      <table className="w-full min-w-[560px]">
+      <table className="w-full min-w-[480px]">
         <thead className="bg-slate-50">
           <tr>
             <th className={cx(th, "text-left")}>GST rate</th>
@@ -134,14 +134,76 @@ function GstByRate({ rates }: { rates: { rate: number; invoices: number; taxable
               <td className={cx(cell, "font-bold text-slate-900")}>{r.rate}%</td>
               <td className={cx(cell, "text-right text-slate-600")}>{r.invoices}</td>
               <td className={cx(cell, "adm-num text-right text-slate-700")}>{rupee(r.taxable)}</td>
-              <td className={cx(cell, "adm-num text-right text-slate-700")}>{rupee(r.gst / 2)}</td>
-              <td className={cx(cell, "adm-num text-right text-slate-700")}>{rupee(r.gst / 2)}</td>
+              <td className={cx(cell, "adm-num text-right text-slate-700")}>{rupee(r.cgst)}</td>
+              <td className={cx(cell, "adm-num text-right text-slate-700")}>{rupee(r.sgst)}</td>
               <td className={cx(cell, "adm-num text-right font-bold text-amber-700")}>{rupee(r.gst)}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** Invoice-by-invoice GST — the list an accountant files from. Shows the latest few, the CSV has them all. */
+function GstRegister({ bills, onExport }: { bills: Bill[]; onExport: () => void }) {
+  const [all, setAll] = useState(false);
+  const rows = all ? bills : bills.slice(0, 12);
+  const cell = "px-3 py-2.5 text-[12.5px] whitespace-nowrap";
+  return (
+    <Card
+      title="GST invoices"
+      right={
+        <Btn size="sm" icon="download" onClick={onExport} disabled={!bills.length}>
+          Download CSV
+        </Btn>
+      }
+    >
+      {!bills.length ? (
+        <p className="py-8 text-center text-[13px] text-slate-400">No GST invoices in this period yet.</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto rounded-xl border border-slate-100 adm-scroll">
+            <table className="w-full min-w-[760px]">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className={cx(th, "text-left")}>Invoice</th>
+                  <th className={cx(th, "text-left")}>Date</th>
+                  <th className={cx(th, "text-left")}>Customer</th>
+                  <th className={cx(th, "text-right")}>Rate</th>
+                  <th className={cx(th, "text-right")}>Taxable</th>
+                  <th className={cx(th, "text-right")}>CGST</th>
+                  <th className={cx(th, "text-right")}>SGST</th>
+                  <th className={cx(th, "text-right")}>Invoice total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((b) => {
+                  const half = splitGst(b.gstAmount);
+                  return (
+                    <tr key={b.id} className="border-b border-slate-100 last:border-0">
+                      <td className={cx(cell, "font-semibold text-slate-900")}>{b.invoiceNo}</td>
+                      <td className={cx(cell, "text-slate-600")}>{fmtDate(b.createdAt)}</td>
+                      <td className={cx(cell, "max-w-[180px] truncate text-slate-700")}>{b.customerName || b.customerPhone || "—"}</td>
+                      <td className={cx(cell, "text-right text-slate-600")}>{b.gstPercent}%</td>
+                      <td className={cx(cell, "adm-num text-right text-slate-700")}>{rupee(b.taxableAmount)}</td>
+                      <td className={cx(cell, "adm-num text-right text-slate-700")}>{rupee(half.cgst)}</td>
+                      <td className={cx(cell, "adm-num text-right text-slate-700")}>{rupee(half.sgst)}</td>
+                      <td className={cx(cell, "adm-num text-right font-bold text-amber-700")}>{rupee(b.total)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {bills.length > rows.length || all ? (
+            <button type="button" onClick={() => setAll(!all)} className="mt-3 text-[12.5px] font-bold text-red-600 hover:underline">
+              {all ? "Show fewer" : `Show all ${bills.length} invoices`}
+            </button>
+          ) : null}
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -205,7 +267,17 @@ export default function AnalyticsPage() {
   /* The Expenses tab has its own filters; this uses the period picked here, so
      the two agree on what "this month" means but can differ in range. */
   const expensesTotal = useMemo(() => expensesIn(s.expenses, range).reduce((a, e) => a + e.amount, 0), [s.expenses, range]);
-  const net = sum.revenue - expensesTotal;
+  /* GST collected is passed on to the government, so it isn't earnings. */
+  const net = sum.revenue - sum.gst - expensesTotal;
+  const gstBills = useMemo(() => inPeriod.filter((b) => b.isGst).sort((a, b) => b.createdAt - a.createdAt), [inPeriod]);
+  const exportGst = () => {
+    const head = ["Invoice", "Date", "Customer", "Phone", "GST %", "Taxable amount", "CGST", "SGST", "Total GST", "Invoice total"];
+    const body = gstBills.map((b) => {
+      const h = splitGst(b.gstAmount);
+      return [b.invoiceNo, fmtDate(b.createdAt), b.customerName, b.customerPhone, b.gstPercent, b.taxableAmount, h.cgst, h.sgst, b.gstAmount, b.total];
+    });
+    downloadText(`gst-invoices-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...body]));
+  };
   const { data: ledger } = useLedger({ from: range?.from, to: range?.to, size: 1 });
   const stock = ledger?.stats ?? { added: 0, sold: 0, removed: 0, returned: 0, adjusted: 0, net: 0 };
   const lowCount = s.products.filter((p) => p.stock !== null && p.stock <= p.lowAt).length;
@@ -218,46 +290,36 @@ export default function AnalyticsPage() {
         title="Analytics"
         sub="Real-time store & customer insights"
         right={
-          <div className="flex flex-col items-end gap-2">
-            {tab === "revenue" && (
-              <div
-                className={cx(
-                  "flex items-center gap-2.5 rounded-full border px-3.5 py-1.5 text-[12px] font-bold uppercase tracking-wide transition",
-                  gstView ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-500",
-                )}
-              >
-                GST view
-                <Switch on={gstView} onChange={setGstView} label="GST view" />
-              </div>
-            )}
-            <Pills
-              label="Period:"
-              value={period}
-              onChange={setPeriod}
-              options={[
-                { v: "all", t: "All time" },
-                { v: "today", t: "Today" },
-                { v: "week", t: "This week" },
-                { v: "month", t: "This month" },
-                { v: "year", t: "This year" },
-                { v: "custom", t: "Custom" },
-              ]}
-            />
-            {period === "custom" && (
-              <div className="adm-in flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-1.5 shadow-[0_2px_8px_-2px_rgba(15,23,42,.08)]">
-                <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                  From:
-                  <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-8 rounded-lg px-1 text-[13px] font-semibold text-slate-800 outline-none" />
-                </label>
-                <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                  To:
-                  <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-8 rounded-lg px-1 text-[13px] font-semibold text-slate-800 outline-none" />
-                </label>
-              </div>
-            )}
-          </div>
+          tab === "revenue" ? (
+            <div
+              className={cx(
+                "flex items-center gap-2.5 rounded-full border px-3.5 py-1.5 text-[12px] font-bold uppercase tracking-wide transition",
+                gstView ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-500",
+              )}
+            >
+              GST view
+              <Switch on={gstView} onChange={setGstView} label="GST view" />
+            </div>
+          ) : undefined
         }
       />
+
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <Pills
+          label="Period:"
+          value={period}
+          onChange={setPeriod}
+          options={[
+            { v: "all", t: "All time" },
+            { v: "today", t: "Today" },
+            { v: "week", t: "This week" },
+            { v: "month", t: "This month" },
+            { v: "year", t: "This year" },
+            { v: "custom", t: "Custom" },
+          ]}
+        />
+        {period === "custom" && <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />}
+      </div>
 
       <Tabs
         value={tab}
@@ -274,34 +336,36 @@ export default function AnalyticsPage() {
         ]}
       />
 
-      {/* ============ REVENUE ============ */}
       {/* ============ GST VIEW ============ */}
       {tab === "revenue" && gstView && (
         <div className="adm-in space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi label="GST invoices" value={gstr.invoices} hint={`of ${sum.count} bill${sum.count === 1 ? "" : "s"} in period`} icon="billing" tone="amber" />
-            <Kpi label="GST revenue" value={rupee(gstr.revenue)} hint="Invoice totals incl. GST" icon="rupee" tone="emerald" />
-            <Kpi label="Taxable amount" value={rupee(gstr.taxable)} hint="Value GST was charged on" icon="billing" tone="sky" />
-            <Kpi label="GST collected" value={rupee(gstr.gst)} hint={gstr.avgRate > 0 ? `Avg ${gstr.avgRate.toFixed(1)}% effective` : "No GST yet"} icon="billing" tone="amber" />
+            <Kpi label="GST collected" value={rupee(gstr.gst)} hint={gstr.avgRate > 0 ? `Avg ${gstr.avgRate.toFixed(1)}% on taxable sales` : "No GST collected yet"} icon="percent" tone="amber" />
+            <Kpi label="Taxable sales" value={rupee(gstr.taxable)} hint="Value GST was charged on" icon="rupee" tone="sky" />
+            <Kpi label="GST invoice value" value={rupee(gstr.revenue)} hint="Taxable sales + GST" icon="billing" tone="emerald" />
+            <Kpi label="GST invoices" value={gstr.invoices} hint={`of ${sum.count} bill${sum.count === 1 ? "" : "s"} in period`} icon="list" tone="violet" />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi label="CGST (Central)" value={rupee(gstr.cgst)} hint="Half of GST collected" icon="billing" tone="violet" />
-            <Kpi label="SGST (State)" value={rupee(gstr.sgst)} hint="Half of GST collected" icon="billing" tone="violet" />
-            <Kpi label="Non-GST bills" value={gstr.nonGstBills} hint="Billed without GST" icon="billing" tone="slate" />
-            <Kpi label="GST rates used" value={gstr.rates.length} hint={gstr.rates.length ? gstr.rates.map((r) => `${r.rate}%`).join(", ") : "—"} icon="billing" tone="amber" small />
+            <Kpi label="CGST (central)" value={rupee(gstr.cgst)} hint="Half of GST collected" icon="percent" tone="violet" />
+            <Kpi label="SGST (state)" value={rupee(gstr.sgst)} hint="Half of GST collected" icon="percent" tone="violet" />
+            <Kpi label="Non-GST sales" value={rupee(sum.nonGstRev)} hint={`${gstr.nonGstBills} bill${gstr.nonGstBills === 1 ? "" : "s"} billed without GST`} icon="bag" tone="slate" />
+            <Kpi label="GST rates used" value={gstr.rates.length ? gstr.rates.map((r) => `${r.rate}%`).join(", ") : "—"} hint={`${gstr.rates.length} rate${gstr.rates.length === 1 ? "" : "s"} in this period`} icon="sliders" tone="amber" small />
           </div>
 
-          <Card title="GST by rate" right={<span className="text-[12px] text-slate-500">CGST + SGST shown separately</span>}>
-            <GstByRate rates={gstr.rates} />
-          </Card>
+          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            <Card title="GST by rate" right={<span className="text-[12px] text-slate-500">CGST + SGST shown separately</span>}>
+              <GstByRate rates={gstr.rates} />
+            </Card>
+            <Card title="GST vs Non-GST" right={<span className="text-[12px] text-slate-500">{sum.count} bill{sum.count === 1 ? "" : "s"} in period</span>}>
+              {sum.count ? (
+                <GstSplit gstN={sum.gstN} gstRev={sum.gstRev} gst={sum.gst} taxable={sum.taxable} nonGstN={sum.nonGstN} nonGstRev={sum.nonGstRev} />
+              ) : (
+                <p className="text-[13px] text-slate-400">No bills in this period.</p>
+              )}
+            </Card>
+          </div>
 
-          <Card title="GST vs Non-GST" right={<span className="text-[12px] text-slate-500">{sum.count} bill{sum.count === 1 ? "" : "s"} in period</span>}>
-            {sum.count ? (
-              <GstSplit gstN={sum.gstN} gstRev={sum.gstRev} gst={sum.gst} taxable={sum.taxable} nonGstN={sum.nonGstN} nonGstRev={sum.nonGstRev} />
-            ) : (
-              <p className="text-[13px] text-slate-400">No bills in this period.</p>
-            )}
-          </Card>
+          <GstRegister bills={gstBills} onExport={exportGst} />
 
           <p className="rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-2.5 text-center text-[12.5px] text-amber-800">
             GST view — only the tax side of the books. Turn off <b>GST view</b> to see full revenue, products and customers.
@@ -313,19 +377,25 @@ export default function AnalyticsPage() {
       {tab === "revenue" && !gstView && (
         <div className="adm-in space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi label="Net earnings" value={rupee(net)} hint="Revenue − expenses" icon="rupee" tone={net >= 0 ? "emerald" : "red"} />
+            <Kpi label="Net earnings" value={rupee(net)} hint={sum.gst > 0 ? "Revenue − GST − expenses" : "Revenue − expenses"} icon="rupee" tone={net >= 0 ? "emerald" : "red"} />
             <Kpi label="Total revenue" value={rupee(sum.revenue)} hint={sum.gst > 0 ? `Includes ${rupee(sum.gst)} GST collected` : "Customer tabs + counter combined"} icon="rupee" tone="emerald" />
             <Kpi label="Total expenses" value={rupee(expensesTotal)} hint="From the Expenses tab" icon="bag" tone="rose" />
             <Kpi label="Discounts given" value={rupee(sum.discount)} hint={`${sum.discounted} discounted bills`} icon="coupon" tone="violet" />
           </div>
           <p className="rounded-xl border border-slate-100 bg-white px-4 py-2.5 text-center text-[12.5px] font-semibold text-slate-500">
-            Calculation: <b className="text-slate-800">Tab + Counter revenue</b> − <b className="text-slate-800">Expenses</b> = <b className={net >= 0 ? "text-emerald-600" : "text-red-600"}>{rupee(net)}</b>
+            Calculation: <b className="text-slate-800">Revenue {rupee(sum.revenue)}</b>
+            {sum.gst > 0 && (
+              <>
+                {" "}− <b className="text-slate-800">GST {rupee(sum.gst)}</b>
+              </>
+            )}{" "}
+            − <b className="text-slate-800">Expenses {rupee(expensesTotal)}</b> = <b className={net >= 0 ? "text-emerald-600" : "text-red-600"}>{rupee(net)}</b>
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi label="Completed bills" value={sum.count} hint="Tab + counter bills" icon="billing" tone="amber" />
             <Kpi label="Tab revenue" value={rupee(sum.tabRev)} hint="Guests who ordered from their phone" icon="utensils" tone="sky" />
             <Kpi label="Counter revenue" value={rupee(sum.counterRev)} hint="Walk-in counter sales" icon="bag" tone="violet" />
-            <Kpi label="GST collected" value={rupee(sum.gst)} hint={`${sum.gstN} GST invoice${sum.gstN === 1 ? "" : "s"} of ${sum.count}`} icon="billing" tone="amber" />
+            <Kpi label="GST collected" value={rupee(sum.gst)} hint={`${sum.gstN} GST invoice${sum.gstN === 1 ? "" : "s"} of ${sum.count}`} icon="percent" tone="amber" />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <Kpi label="Tab bills" value={sum.tabN} hint="Customer tabs settled" icon="tables" tone="rose" />
@@ -335,86 +405,84 @@ export default function AnalyticsPage() {
             <Kpi label="Top product" value={sum.top} hint="Most sold item" icon="star" tone="amber" small />
           </div>
 
-          <Card title="GST vs Non-GST" right={<span className="text-[12px] text-slate-500">{sum.count} bill{sum.count === 1 ? "" : "s"} in period</span>}>
-            {sum.count ? (
-              <GstSplit gstN={sum.gstN} gstRev={sum.gstRev} gst={sum.gst} taxable={sum.taxable} nonGstN={sum.nonGstN} nonGstRev={sum.nonGstRev} />
-            ) : (
-              <p className="text-[13px] text-slate-400">No bills in this period.</p>
-            )}
-          </Card>
-
-          <div className="grid gap-5 xl:grid-cols-3">
-            <div className="space-y-5 xl:col-span-2">
-              <Card>
-                <h2 className="text-[15px] font-bold text-slate-800">
-                  Revenue Trend This Year <span className="text-red-600">{year}</span>
-                </h2>
-                <div className="mb-6 mt-2 flex flex-wrap items-center gap-3">
-                  <b className="adm-num text-[22px] font-extrabold text-slate-900">{rupee(yearTotal)}</b>
-                  <span className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-800">Avg {rupee(Math.round(yearTotal / activeMonths))}/mo</span>
-                </div>
-                <Columns data={months.map((v, i) => ({ label: MONTHS[i], full: `${MONTHS[i]} ${year}`, value: v }))} empty="No revenue yet this year" />
-              </Card>
-              <Card>
-                <h2 className="text-[15px] font-bold text-slate-800">
-                  Revenue This Week{" "}
-                  <span className="text-red-600">
-                    (Week {wk.week} of {wk.year})
-                  </span>
-                </h2>
-                <p className="mb-6 mt-1 text-[12px] text-slate-500">{rupee(week.reduce((a, b) => a + b, 0))} total</p>
-                <Columns
-                  height={180}
-                  data={week.map((v, i) => {
-                    const d = new Date(wkStart + i * 86400000 + 3600000);
-                    return { label: DAYS[i], full: `${DAYS[i]} ${d.getDate()}/${d.getMonth() + 1}`, value: v };
-                  })}
-                  empty="No revenue yet this week"
-                />
-              </Card>
-            </div>
-            <div className="space-y-5">
-              <Card title="Order Source">
-                <SourceSplit tab={sum.tabN} counter={sum.counterN} />
-              </Card>
-              <Card title="Payment mode" right={pay.splitN ? <span className="text-[12px] text-slate-500">{pay.splitN} split bill{pay.splitN === 1 ? "" : "s"}</span> : undefined}>
-                <dl className="space-y-2 text-[13px]">
-                  <div className="flex justify-between"><dt className="text-slate-500">Cash</dt><dd className="font-bold text-slate-900">{rupee(pay.cash)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-slate-500">Card</dt><dd className="font-bold text-slate-900">{rupee(pay.card)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-slate-500">UPI</dt><dd className="font-bold text-slate-900">{rupee(pay.upi)}</dd></div>
-                </dl>
-              </Card>
-              <Card title="Top Items by Revenue">
-                <TopItems bills={inPeriod} />
-              </Card>
-              <Card title="Stock movement" right={<Link href="/admin/inventory/movements" className="text-[12px] font-bold text-red-600 hover:underline">Open</Link>}>
-                <dl className="space-y-2 text-[13px]">
-                  <div className="flex justify-between"><dt className="text-slate-500">Stock added</dt><dd className="font-bold text-emerald-600">+{stock.added}</dd></div>
-                  <div className="flex justify-between"><dt className="text-slate-500">Units sold</dt><dd className="font-bold text-slate-900">{stock.sold}</dd></div>
-                  {stock.removed > 0 && <div className="flex justify-between"><dt className="text-slate-500">Removed (waste / own use)</dt><dd className="font-bold text-slate-900">{stock.removed}</dd></div>}
-                  <div className="flex justify-between"><dt className="text-slate-500">Returned (cancel / void)</dt><dd className="font-bold text-slate-900">+{stock.returned}</dd></div>
-                  <div className="flex justify-between"><dt className="text-slate-500">Adjustments</dt><dd className="font-bold text-slate-900">{stock.adjusted > 0 ? "+" : ""}{stock.adjusted}</dd></div>
-                  <div className="flex justify-between border-t border-dashed border-slate-200 pt-2"><dt className="text-slate-500">Low / sold-out items</dt><dd className={cx("font-bold", lowCount ? "text-amber-600" : "text-slate-900")}>{lowCount}</dd></div>
-                </dl>
-              </Card>
-              <Card title="Customers" right={<span className="text-[12px] text-slate-500">{customers.length} known · {repeat} repeat</span>}>
-                {customers.length ? (
-                  <ul className="space-y-2.5 text-[13px]">
-                    {customers.slice(0, 5).map((c) => (
-                      <li key={c.key} className="flex items-center justify-between gap-3">
-                        <span className="min-w-0">
-                          <b className="block truncate text-slate-800">{c.name || "—"}</b>
-                          <span className="text-[11.5px] text-slate-400">{c.phone} · {c.visits} visit{c.visits === 1 ? "" : "s"}</span>
-                        </span>
-                        <b className="shrink-0 text-slate-900">{rupee(c.spent)}</b>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-[13px] text-slate-400">No customer mobiles on bills in this period.</p>
-                )}
-              </Card>
-            </div>
+          {/* Two balanced columns: the browser flows the cards down the first column and
+              then the second, so neither side is left with a gap under it however tall the
+              cards turn out. */}
+          <div className="-mb-5 gap-5 xl:columns-2 [&>*]:mb-5 [&>*]:break-inside-avoid">
+            <Card>
+              <h2 className="text-[15px] font-bold text-slate-800">
+                Revenue Trend This Year <span className="text-red-600">{year}</span>
+              </h2>
+              <div className="mb-6 mt-2 flex flex-wrap items-center gap-3">
+                <b className="adm-num text-[22px] font-extrabold text-slate-900">{rupee(yearTotal)}</b>
+                <span className="rounded-md bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-800">Avg {rupee(Math.round(yearTotal / activeMonths))}/mo</span>
+              </div>
+              <Columns data={months.map((v, i) => ({ label: MONTHS[i], full: `${MONTHS[i]} ${year}`, value: v }))} empty="No revenue yet this year" />
+            </Card>
+            <Card>
+              <h2 className="text-[15px] font-bold text-slate-800">
+                Revenue This Week{" "}
+                <span className="text-red-600">
+                  (Week {wk.week} of {wk.year})
+                </span>
+              </h2>
+              <p className="mb-6 mt-1 text-[12px] text-slate-500">{rupee(week.reduce((a, b) => a + b, 0))} total</p>
+              <Columns
+                height={180}
+                data={week.map((v, i) => {
+                  const d = new Date(wkStart + i * 86400000 + 3600000);
+                  return { label: DAYS[i], full: `${DAYS[i]} ${d.getDate()}/${d.getMonth() + 1}`, value: v };
+                })}
+                empty="No revenue yet this week"
+              />
+            </Card>
+            <Card title="Top Items by Revenue">
+              <TopItems bills={inPeriod} />
+            </Card>
+            <Card title="Customers" right={<span className="text-[12px] text-slate-500">{customers.length} known · {repeat} repeat</span>}>
+              {customers.length ? (
+                <ul className="space-y-2.5 text-[13px]">
+                  {customers.slice(0, 5).map((c) => (
+                    <li key={c.key} className="flex items-center justify-between gap-3">
+                      <span className="min-w-0">
+                        <b className="block truncate text-slate-800">{c.name || "—"}</b>
+                        <span className="text-[11.5px] text-slate-400">{c.phone} · {c.visits} visit{c.visits === 1 ? "" : "s"}</span>
+                      </span>
+                      <b className="shrink-0 text-slate-900">{rupee(c.spent)}</b>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[13px] text-slate-400">No customer mobiles on bills in this period.</p>
+              )}
+            </Card>
+            <Card title="GST vs Non-GST" right={<span className="text-[12px] text-slate-500">{sum.count} bill{sum.count === 1 ? "" : "s"} in period</span>}>
+              {sum.count ? (
+                <GstSplit gstN={sum.gstN} gstRev={sum.gstRev} gst={sum.gst} taxable={sum.taxable} nonGstN={sum.nonGstN} nonGstRev={sum.nonGstRev} />
+              ) : (
+                <p className="text-[13px] text-slate-400">No bills in this period.</p>
+              )}
+            </Card>
+            <Card title="Order Source">
+              <SourceSplit tab={sum.tabN} counter={sum.counterN} />
+            </Card>
+            <Card title="Payment mode" right={pay.splitN ? <span className="text-[12px] text-slate-500">{pay.splitN} split bill{pay.splitN === 1 ? "" : "s"}</span> : undefined}>
+              <dl className="space-y-2 text-[13px]">
+                <div className="flex justify-between"><dt className="text-slate-500">Cash</dt><dd className="font-bold text-slate-900">{rupee(pay.cash)}</dd></div>
+                <div className="flex justify-between"><dt className="text-slate-500">Card</dt><dd className="font-bold text-slate-900">{rupee(pay.card)}</dd></div>
+                <div className="flex justify-between"><dt className="text-slate-500">UPI</dt><dd className="font-bold text-slate-900">{rupee(pay.upi)}</dd></div>
+              </dl>
+            </Card>
+            <Card title="Stock movement" right={<Link href="/admin/inventory/movements" className="text-[12px] font-bold text-red-600 hover:underline">Open</Link>}>
+              <dl className="space-y-2 text-[13px]">
+                <div className="flex justify-between"><dt className="text-slate-500">Stock added</dt><dd className="font-bold text-emerald-600">+{stock.added}</dd></div>
+                <div className="flex justify-between"><dt className="text-slate-500">Units sold</dt><dd className="font-bold text-slate-900">{stock.sold}</dd></div>
+                {stock.removed > 0 && <div className="flex justify-between"><dt className="text-slate-500">Removed (waste / own use)</dt><dd className="font-bold text-slate-900">{stock.removed}</dd></div>}
+                <div className="flex justify-between"><dt className="text-slate-500">Returned (cancel / void)</dt><dd className="font-bold text-slate-900">+{stock.returned}</dd></div>
+                <div className="flex justify-between"><dt className="text-slate-500">Adjustments</dt><dd className="font-bold text-slate-900">{stock.adjusted > 0 ? "+" : ""}{stock.adjusted}</dd></div>
+                <div className="flex justify-between border-t border-dashed border-slate-200 pt-2"><dt className="text-slate-500">Low / sold-out items</dt><dd className={cx("font-bold", lowCount ? "text-amber-600" : "text-slate-900")}>{lowCount}</dd></div>
+              </dl>
+            </Card>
           </div>
         </div>
       )}

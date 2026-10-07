@@ -99,6 +99,14 @@ html:has(.adm) {
 .adm input[type="number"] {
   -moz-appearance: textfield;
 }
+/* The red focus ring above is for buttons and links. Typing fields show focus with
+   their own neutral border instead — the ring is unlayered, so it beat Tailwind's
+   outline-none and drew a red double border round every field. */
+.adm input:focus-visible,
+.adm textarea:focus-visible,
+.adm select:focus-visible {
+  outline: none;
+}
 .adm select {
   appearance: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2326170f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");

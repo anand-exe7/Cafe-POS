@@ -215,7 +215,6 @@ export default function Menu({ initial }: { initial: TabView }) {
      order starts a brand-new tab. 0 = nothing owed yet. */
   const [seenClose, setSeenClose] = useStored("clc-seen", 0);
   const [q, setQ] = useState("");
-  const [eggless, setEggless] = useState(false);
   const [active, setActive] = useState(0);
   const [sheet, setSheet] = useState<null | "cart" | "tab">(null);
   const [finish, setFinish] = useState(false);
@@ -355,14 +354,13 @@ export default function Menu({ initial }: { initial: TabView }) {
   const cats = useMemo(() => {
     const out: { name: string; items: MenuItem[] }[] = [];
     for (const m of view.menu) {
-      if (eggless && !m.eggless) continue;
       if (needle && !`${m.name} ${m.description} ${m.category}`.toLowerCase().includes(needle)) continue;
       const c = out.find((x) => x.name === m.category);
       if (c) c.items.push(m);
       else out.push({ name: m.category, items: [m] });
     }
     return out;
-  }, [view.menu, eggless, needle]);
+  }, [view.menu, needle]);
 
   const maxFor = (m: MenuItem) => Math.min(30, m.left ?? 30);
 
@@ -378,7 +376,7 @@ export default function Menu({ initial }: { initial: TabView }) {
     );
     secs.forEach((s) => io.observe(s));
     return () => io.disconnect();
-  }, [cats.length, needle, eggless]);
+  }, [cats.length, needle]);
 
   useEffect(() => {
     const rail = railRef.current;
@@ -533,10 +531,6 @@ export default function Menu({ initial }: { initial: TabView }) {
             <span className="sr-only">Search the menu</span>
             <input type="search" placeholder="Brownie, chai, cheesecake…" value={q} onChange={(e) => setQ(e.target.value)} />
           </label>
-          <button type="button" className="tm-egg" aria-pressed={eggless} onClick={() => setEggless((v) => !v)}>
-            <i className="tm-mark tm-mark--veg" aria-hidden="true" />
-            Eggless only
-          </button>
         </div>
       </section>
 
@@ -556,7 +550,7 @@ export default function Menu({ initial }: { initial: TabView }) {
       <main className="tm-menu">
         {cats.length === 0 && (
           <p className="tm-empty">
-            Nothing matches{needle ? <> &ldquo;{q}&rdquo;</> : ""}. <button type="button" onClick={() => { setQ(""); setEggless(false); }}>Show everything</button>
+            Nothing matches{needle ? <> &ldquo;{q}&rdquo;</> : ""}. <button type="button" onClick={() => setQ("")}>Show everything</button>
           </p>
         )}
         {cats.map((c, ci) => (
@@ -576,7 +570,6 @@ export default function Menu({ initial }: { initial: TabView }) {
                     </div>
                     <div className="tm-item__body">
                       <h3>
-                        <i className={`tm-mark ${m.eggless ? "tm-mark--veg" : "tm-mark--egg"}`} title={m.eggless ? "Eggless" : "Contains egg"} aria-label={m.eggless ? "Eggless" : "Contains egg"} />
                         {m.name}
                       </h3>
                       {m.tags.includes("bestseller") && <span className="tm-tag">★ Bestseller</span>}
