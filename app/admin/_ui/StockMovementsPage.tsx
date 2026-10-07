@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { StockMoveType } from "@/lib/types";
+import type { StockLedger, StockMoveType } from "@/lib/types";
 import { rangeOf, type Period } from "@/lib/analytics";
 import { useLedger } from "./ledger";
-import { Badge, Card, Empty, Kpi, Page, PageHead, Pills, SearchBox, cx, fmtDateTime, type BadgeTone } from "./kit";
+import { useAdmin } from "./Store";
+import { Badge, Btn, Card, DateRange, Empty, Kpi, Page, PageHead, Pills, SearchBox, csv, cx, downloadText, fmtDate, fmtDateTime, fmtTime, type BadgeTone } from "./kit";
 
 const TYPE: Record<StockMoveType, [string, BadgeTone]> = {
   initial: ["Opening", "slate"],
@@ -21,6 +22,8 @@ const td = "px-4 py-3 text-[13px]";
 const SIZE = 20;
 
 export default function StockMovementsPage() {
+  const { toast } = useAdmin();
+  const [exporting, setExporting] = useState(false);
   const [period, setPeriod] = useState<Period>("week");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -46,39 +49,65 @@ export default function StockMovementsPage() {
   /* any filter change starts again from the first page */
   const filter = <T,>(set: (v: T) => void) => (v: T) => (set(v), setPage(1));
 
+  /* Every movement that matches the filters on screen — not just this page — as a CSV. */
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const p = new URLSearchParams({ export: "1", size: "5000" });
+      if (range && Number.isFinite(range.from)) p.set("from", String(range.from));
+      if (range && Number.isFinite(range.to)) p.set("to", String(range.to));
+      if (type !== "all") p.set("type", type);
+      if (pid !== "all") p.set("pid", pid);
+      if (needle) p.set("q", needle);
+      const r = await fetch(`/api/admin/stock-movements?${p}`, { cache: "no-store" });
+      const d: StockLedger & { error?: string } = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      if (!d.rows.length) return toast({ kind: "info", title: "Nothing to download", body: "No stock movements match these filters." });
+      const head = ["Date", "Time", "Product", "Type", "Change", "Balance after", "Reason", "Reference"];
+      const body = d.rows.map((m) => [fmtDate(m.createdAt), fmtTime(m.createdAt), m.productName, TYPE[m.type][0], m.qty, m.balanceAfter, m.note, m.ref]);
+      downloadText(`stock-movement-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...body]));
+      toast({ kind: "ok", title: `Downloaded ${d.rows.length} movement${d.rows.length === 1 ? "" : "s"}`, body: d.total > d.rows.length ? `Latest ${d.rows.length} of ${d.total} — narrow the dates to get the rest.` : undefined });
+    } catch {
+      toast({ kind: "err", title: "Couldn't prepare the download. Please try again." });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <Page>
       <PageHead
         title="Stock movement"
         sub="Every addition, sale, return and correction to tracked stock. History starts from when this feature went live."
         right={
-          <Link href="/admin/inventory" className="inline-flex h-10 items-center rounded-xl bg-slate-100 px-4 text-[13px] font-semibold text-slate-700 hover:bg-slate-200">
-            ← Inventory
-          </Link>
+          <>
+            <Btn icon="download" className="h-10" disabled={exporting || !data?.total} onClick={exportCsv}>
+              {exporting ? "Preparing…" : "Download CSV"}
+            </Btn>
+            <Link href="/admin/inventory" className="inline-flex h-10 items-center rounded-xl bg-slate-100 px-4 text-[13px] font-semibold text-slate-700 hover:bg-slate-200">
+              ← Inventory
+            </Link>
+          </>
         }
       />
 
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <Pills
-          value={period}
-          onChange={filter(setPeriod)}
-          options={[
-            { v: "today", t: "Today" },
-            { v: "week", t: "Week" },
-            { v: "month", t: "Month" },
-            { v: "year", t: "Year" },
-            { v: "custom", t: "Custom" },
-            { v: "all", t: "All" },
-          ]}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          {period === "custom" && (
-            <span className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">
-              <input type="date" value={from} max={to || undefined} onChange={(e) => filter(setFrom)(e.target.value)} className="h-10 rounded-xl border border-slate-200 px-2" aria-label="From" />
-              –
-              <input type="date" value={to} min={from || undefined} onChange={(e) => filter(setTo)(e.target.value)} className="h-10 rounded-xl border border-slate-200 px-2" aria-label="To" />
-            </span>
-          )}
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-3">
+          <Pills
+            value={period}
+            onChange={filter(setPeriod)}
+            options={[
+              { v: "all", t: "All" },
+              { v: "today", t: "Today" },
+              { v: "week", t: "Week" },
+              { v: "month", t: "Month" },
+              { v: "year", t: "Year" },
+              { v: "custom", t: "Custom" },
+            ]}
+          />
+          {period === "custom" && <DateRange from={from} to={to} onFrom={filter(setFrom)} onTo={filter(setTo)} />}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
           <select className="h-10 rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 outline-none" value={type} onChange={(e) => filter(setType)(e.target.value as typeof type)} aria-label="Type">
             <option value="all">All movements</option>
             {Object.entries(TYPE).map(([k, [t]]) => (

@@ -14,6 +14,9 @@ import { round2 } from "@/lib/money";
 export type Toast = { id: number; kind: "ok" | "err" | "order" | "bill" | "info"; title: string; body?: string; href?: string };
 type ConfirmReq = { title: string; body?: React.ReactNode; ok?: string; danger?: boolean };
 export type ActResult<T = unknown> = { ok: true; result: T } | { ok: false; error: string };
+/** `optimistic` paints the expected result straight away and lets the server catch up in
+    the background; if the server says no, the screen goes back to what the server has. */
+export type ActOpts = { optimistic?: (s: AdminState) => AdminState };
 
 /** One open tab, found by the customer's mobile. */
 export type FloorTab = {
@@ -28,7 +31,7 @@ export type FloorTab = {
 
 type Ctx = {
   s: AdminState;
-  act: <T = unknown>(op: string, args?: Record<string, unknown>) => Promise<ActResult<T>>;
+  act: <T = unknown>(op: string, args?: Record<string, unknown>, opts?: ActOpts) => Promise<ActResult<T>>;
   refresh: () => Promise<void>;
   toast: (t: Omit<Toast, "id">) => void;
   toasts: Toast[];
@@ -89,6 +92,12 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
   const origin = useSyncExternalStore(noop, () => window.location.origin, () => "");
   const [now, setNow] = useState(() => Date.now());
   const version = useRef(initial.version);
+  /* Optimistic writes in flight, and a counter that moves each time one starts. A poll
+     that began before a write, or lands while one is still pending, carries older data
+     than the screen shows — applying it would flick the number back and forth. */
+  const writes = useRef(0);
+  const writeGen = useRef(0);
+  const reload = useRef(false);
   const resolver = useRef<((v: boolean) => void) | null>(null);
   const audio = useRef<AudioContext | null>(null);
   const tid = useRef(0);
@@ -142,17 +151,22 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
   }, []);
 
   /* ---------- sync ---------- */
-  const poll = useCallback(async () => {
-    try {
-      const r = await fetch(`/api/admin/state?since=${version.current}`, { cache: "no-store" });
-      if (r.status === 401) return router.replace("/admin/login");
-      if (!r.ok) return;
-      const d = await r.json();
-      if (d.same) return;
-      version.current = d.version;
-      setS(d);
-    } catch {}
-  }, [router]);
+  const poll = useCallback(
+    async (force = false) => {
+      const gen = writeGen.current;
+      try {
+        const r = await fetch(`/api/admin/state?since=${force ? 0 : version.current}`, { cache: "no-store" });
+        if (r.status === 401) return router.replace("/admin/login");
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.same) return;
+        if (writes.current > 0 || gen !== writeGen.current) return; // stale next to what's on screen; the last write re-polls
+        version.current = d.version;
+        setS(d);
+      } catch {}
+    },
+    [router],
+  );
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
@@ -176,7 +190,14 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
   useEffect(() => subscribeChanges(() => void poll()), [poll]);
 
   const act = useCallback(
-    async <T,>(op: string, args: Record<string, unknown> = {}): Promise<ActResult<T>> => {
+    async <T,>(op: string, args: Record<string, unknown> = {}, opts: ActOpts = {}): Promise<ActResult<T>> => {
+      const fast = !!opts.optimistic;
+      if (opts.optimistic) {
+        writes.current++;
+        writeGen.current++;
+        setS(opts.optimistic);
+      }
+      let ok = false;
       try {
         const r = await fetch("/api/admin/op", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...args, op }) });
         const d = await r.json().catch(() => ({}));
@@ -188,11 +209,23 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
           toast({ kind: "err", title: d.error ?? "Something went wrong." });
           return { ok: false, error: d.error ?? "error" };
         }
-        await poll();
+        ok = true;
+        if (!fast) await poll();
         return { ok: true, result: d.result as T };
       } catch {
         toast({ kind: "err", title: "Network problem — check the connection and try again." });
         return { ok: false, error: "network" };
+      } finally {
+        if (fast) {
+          if (!ok) reload.current = true;
+          /* the last write out puts the screen back in line with the server — in the
+             background, so the next click never waits on it */
+          if (--writes.current === 0) {
+            const force = reload.current;
+            reload.current = false;
+            void poll(force);
+          }
+        }
       }
     },
     [poll, router, toast],

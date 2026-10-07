@@ -131,6 +131,12 @@ export type Expense = {
   createdAt: number;
 };
 
+export type ExpenseCategory = {
+  id: string;
+  name: string;
+  createdAt: number;
+};
+
 export type StockMoveType = "initial" | "added" | "removed" | "sale" | "cancelled_order" | "void_bill" | "adjustment";
 
 /** One page of the stock ledger plus totals for the whole selected period. */
@@ -192,6 +198,7 @@ export type DB = {
   coupons: Coupon[];
   users: StaffUser[];
   expenses: Expense[];
+  expenseCategories: ExpenseCategory[];
 };
 
 /** What the admin panel receives (no secrets). */
@@ -230,7 +237,7 @@ export type TabView = {
   } | null;
 };
 
-export type MenuItem = Pick<Product, "id" | "name" | "category" | "price" | "description" | "image" | "eggless" | "tags"> & {
+export type MenuItem = Pick<Product, "id" | "name" | "category" | "price" | "description" | "image" | "tags"> & {
   soldOut: boolean;
   left: number | null;
 };
