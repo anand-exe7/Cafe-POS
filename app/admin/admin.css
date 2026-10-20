@@ -124,6 +124,10 @@ html:has(.adm) {
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
+  /* Nothing in the panel should drive the window into horizontal scroll on a
+     phone — stray wide tables (bills, stock movements, catalog grids) stay
+     inside their own `overflow-x-auto` wrappers. */
+  overflow-x: clip;
 }
 
 /* ---------- the cocoa band, same as the one the guest menu wears on top ---------- */

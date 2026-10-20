@@ -7,7 +7,7 @@ import { completedIn, customerStats, expensesIn, gstReport, isoWeek, itemStats, 
 import Link from "next/link";
 import { useAdmin } from "./Store";
 import { useLedger } from "./ledger";
-import { Badge, Btn, Card, DateRange, Empty, Kpi, Page, PageHead, Pills, SearchBox, Switch, Tabs, csv, cx, downloadText, fmtDate, fmtTime } from "./kit";
+import { Badge, Btn, Card, DateRange, Empty, Kpi, Page, PageHead, Pills, SearchBox, Switch, Tabs, csv, cx, downloadExcel, downloadText, fmtDate, fmtTime, type ExcelSheet } from "./kit";
 
 type Tab = "revenue" | "today" | "products" | "customers" | "coupons";
 
@@ -284,6 +284,82 @@ export default function AnalyticsPage() {
   const customers = useMemo(() => customerStats(inPeriod), [inPeriod]);
   const repeat = customers.filter((c) => c.visits > 1).length;
 
+  const periodLabel = ({ all: "all-time", today: "today", week: "this-week", month: "this-month", year: "this-year", custom: `${from || "start"}_${to || "end"}` } as const)[period];
+  /* A multi-sheet .xls — opens in Excel, Numbers and Google Sheets with real
+     columns and real numbers. Captures what each tab shows for the chosen
+     period, so an owner can file the whole report in one click. */
+  const exportExcel = () => {
+    const products = itemStats(inPeriod);
+    const sheets: ExcelSheet[] = [
+      {
+        name: "Summary",
+        rows: [
+          ["Chef Loving Cakes · Analytics"],
+          ["Period", periodLabel],
+          [],
+          ["Metric", "Value"],
+          ["Total revenue", sum.revenue],
+          ["Total expenses", expensesTotal],
+          ["GST collected", sum.gst],
+          ["Net earnings", net],
+          ["Completed bills", sum.count],
+          ["Tab bills", sum.tabN],
+          ["Counter bills", sum.counterN],
+          ["Tab revenue", sum.tabRev],
+          ["Counter revenue", sum.counterRev],
+          ["Items sold", sum.items],
+          ["Avg order value", Math.round(sum.aov)],
+          ["Discounts given", sum.discount],
+          ["Discounted bills", sum.discounted],
+          ["Top product", sum.top],
+          [],
+          ["Payment", "Amount"],
+          ["Cash", pay.cash],
+          ["Card", pay.card],
+          ["UPI", pay.upi],
+        ],
+      },
+      {
+        name: "Bills",
+        rows: [
+          ["Invoice", "Date", "Time", "Source", "Customer", "Phone", "Items", "Subtotal", "Discount", "Coupon", "Extra", "GST %", "Taxable", "GST amount", "Total", "Payment", "Status"],
+          ...inPeriod
+            .slice()
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .map((b) => [b.invoiceNo, fmtDate(b.createdAt), fmtTime(b.createdAt), b.source, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.discount, b.couponCode ?? "", b.extra, b.gstPercent, b.taxableAmount, b.gstAmount, b.total, b.payment, b.status]),
+        ],
+      },
+      {
+        name: "Products",
+        rows: [
+          ["#", "Product", "Category", "Units sold", "Revenue", "Share %", "In stock"],
+          ...products.map((p, i) => {
+            const prod = p.productId ? s.products.find((x) => x.id === p.productId) : null;
+            const total = products.reduce((a, x) => a + x.revenue, 0) || 1;
+            return [i + 1, p.name, prod?.category ?? "Custom", p.qty, p.revenue, Math.round((p.revenue / total) * 100), prod?.stock ?? ""];
+          }),
+        ],
+      },
+      {
+        name: "Customers",
+        rows: [
+          ["Customer", "Phone", "Visits", "Revenue", "Avg / visit"],
+          ...customers.map((c) => [c.name || "Guest", c.phone, c.visits, c.spent, Math.round(c.spent / c.visits)]),
+        ],
+      },
+      {
+        name: "Coupons",
+        rows: [
+          ["Invoice", "Date", "Customer phone", "Coupon", "Order total", "Discount applied", "Source"],
+          ...inPeriod
+            .filter((b) => b.discount > 0)
+            .map((b) => [b.invoiceNo, fmtDate(b.createdAt), b.customerPhone, b.couponCode ?? "Manual", b.subtotal, b.discount, b.couponSource ?? "staff"]),
+        ],
+      },
+    ];
+    downloadExcel(`chef-loving-analytics-${periodLabel}-${new Date().toISOString().slice(0, 10)}`, sheets);
+  };
+
   return (
     <Page>
       <PageHead
@@ -319,6 +395,9 @@ export default function AnalyticsPage() {
           ]}
         />
         {period === "custom" && <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />}
+        <Btn size="md" kind="dark" icon="download" onClick={exportExcel} disabled={!inPeriod.length} className="ml-auto">
+          Export Excel
+        </Btn>
       </div>
 
       <Tabs

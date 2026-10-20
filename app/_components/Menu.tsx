@@ -475,6 +475,14 @@ export default function Menu({ initial }: { initial: TabView }) {
 
   const closeSheet = useCallback(() => setSheet(null), []);
   const tab = view.tab;
+  /* The admin can switch the site to menu-only. The cart, tab, "Add" buttons
+     and the bottom bars all drop out — guests just browse the card. */
+  const ordering = view.orderingEnabled !== false;
+  /* A cart left behind from before ordering was switched off must not pop up a
+     bar the guest can't settle, so wipe it the first time we see the mode. */
+  useEffect(() => {
+    if (!ordering && count > 0) setCart(NO_CART);
+  }, [ordering, count, setCart]);
   const liveOrders = tab?.orders.filter((o) => o.status !== "cancelled").length ?? 0;
   /* everything eaten so far, one line per item, for the end-of-meal receipt */
   const billLines = useMemo(() => {
@@ -520,7 +528,9 @@ export default function Menu({ initial }: { initial: TabView }) {
           What are we <em>having?</em>
         </h1>
         <p className="tm-hero__sub">
-          Order straight from your phone. We&apos;ll have it ready for you — pay at the counter when you&apos;re done.
+          {ordering
+            ? <>Order straight from your phone. We&apos;ll have it ready for you — pay at the counter when you&apos;re done.</>
+            : <>Browse what&apos;s on today. Place your order at the counter.</>}
         </p>
         <div className="tm-tools">
           <label className="tm-search">
@@ -578,15 +588,17 @@ export default function Menu({ initial }: { initial: TabView }) {
                       <div className="tm-item__foot">
                         <b className="tm-price">{rupee(m.price)}</b>
                         {m.left !== null && !m.soldOut && <span className="tm-left">Only {m.left} left</span>}
-                        <span className="tm-item__act">
-                          {m.soldOut ? null : qty ? (
-                            <Stepper qty={qty} max={maxFor(m)} name={m.name} onChange={(n) => setQty(m.id, n)} />
-                          ) : (
-                            <button type="button" className="tm-add" onClick={(e) => add(m, e)} aria-label={`Add ${m.name}`}>
-                              Add <span aria-hidden="true">+</span>
-                            </button>
-                          )}
-                        </span>
+                        {ordering && (
+                          <span className="tm-item__act">
+                            {m.soldOut ? null : qty ? (
+                              <Stepper qty={qty} max={maxFor(m)} name={m.name} onChange={(n) => setQty(m.id, n)} />
+                            ) : (
+                              <button type="button" className="tm-add" onClick={(e) => add(m, e)} aria-label={`Add ${m.name}`}>
+                                Add <span aria-hidden="true">+</span>
+                              </button>
+                            )}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </li>
@@ -604,8 +616,8 @@ export default function Menu({ initial }: { initial: TabView }) {
       </main>
 
       {/* ================= cart bar ================= */}
-      <div className={`tm-cbar ${count ? "is-on" : ""}`} aria-hidden={!count}>
-        <button type="button" onClick={() => setSheet("cart")} tabIndex={count ? 0 : -1}>
+      <div className={`tm-cbar ${count && ordering ? "is-on" : ""}`} aria-hidden={!count || !ordering}>
+        <button type="button" onClick={() => setSheet("cart")} tabIndex={count && ordering ? 0 : -1}>
           <span className="tm-cbar__n" ref={badgeRef} key={count}>
             {count}
           </span>
