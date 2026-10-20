@@ -38,11 +38,16 @@ const linesOf = (f: FloorTab): Line[] => {
 export default function BillingPage({ sessionId }: { sessionId?: string }) {
   const { s, floor, act, print, now } = useAdmin();
   const shop = s.settings.shopName;
+  /* "Walk-ins only" and the ordering toggle both reduce POS to counter walk-ins.
+     Either one on → the "Customer tab" mode and its tab picker drop out. */
+  const counterOnly = s.settings.walkInsOnly || !s.settings.orderingEnabled;
 
-  const openTabs = floor;
-  const start = sessionId ? floor.find((f) => f.session.id === sessionId) : undefined;
+  const openTabs = counterOnly ? [] : floor;
+  const start = !counterOnly && sessionId ? floor.find((f) => f.session.id === sessionId) : undefined;
 
-  const [mode, setMode] = useState<"tab" | "counter">(sessionId || openTabs.length ? "tab" : "counter");
+  /* Default to Counter (walk-in). A direct link that names a tab still opens
+     it in tab mode; open tabs on their own don't flip the default any more. */
+  const [mode, setMode] = useState<"tab" | "counter">(counterOnly ? "counter" : start ? "tab" : "counter");
   const [sel, setSel] = useState<string | null>(start?.session.id ?? null);
   const [lines, setLines] = useState<Line[]>(() => (start ? linesOf(start) : [blank()]));
   const [name, setName] = useState(start?.session.customerName ?? "");
@@ -63,6 +68,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
   const [printing, setPrinting] = useState(false);
   const [printFor, setPrintFor] = useState<Bill | null>(null);
   const [picker, setPicker] = useState<number | null>(null);
+  const [picking, setPicking] = useState(false); // "Pick from catalog" (multi-add) modal
   const [done, setDone] = useState<Bill | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -185,33 +191,40 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
           <span className="hidden h-5 w-px bg-slate-300 sm:block" />
           <span className="text-[13px] text-slate-500">Quick invoice generator &amp; database synced checkout</span>
         </div>
-        <div className="flex rounded-2xl bg-slate-100 p-1">
-          {(
-            [
-              ["tab", "Customer tab", "bg-red-500"],
-              ["counter", "Counter (walk-in)", "bg-emerald-500"],
-            ] as const
-          ).map(([m, t, dot]) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => {
-                if (m === mode) return;
-                setMode(m);
-                reset();
-              }}
-              className={cx("flex h-9 items-center gap-2 rounded-xl px-3.5 text-[12px] font-extrabold uppercase tracking-wide transition", mode === m ? "bg-white text-slate-900 shadow" : "text-slate-500 hover:text-slate-800")}
-            >
-              <span className={cx("h-2 w-2 rounded-full", dot)} />
-              {t}
-            </button>
-          ))}
-        </div>
+        {counterOnly ? (
+          <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3.5 py-1.5 text-[11.5px] font-extrabold uppercase tracking-wide text-emerald-700">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Counter · walk-ins only
+          </span>
+        ) : (
+          <div className="flex rounded-2xl bg-slate-100 p-1">
+            {(
+              [
+                ["tab", "Customer tab", "bg-red-500"],
+                ["counter", "Counter (walk-in)", "bg-emerald-500"],
+              ] as const
+            ).map(([m, t, dot]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  if (m === mode) return;
+                  setMode(m);
+                  reset();
+                }}
+                className={cx("flex h-9 items-center gap-2 rounded-xl px-3.5 text-[12px] font-extrabold uppercase tracking-wide transition", mode === m ? "bg-white text-slate-900 shadow" : "text-slate-500 hover:text-slate-800")}
+              >
+                <span className={cx("h-2 w-2 rounded-full", dot)} />
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
         {/* ================= left ================= */}
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {mode === "tab" && (
             <section className={box}>
               <h2 className="mb-3 flex items-center gap-2.5 text-[16px] font-bold text-slate-900">
@@ -285,9 +298,12 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
               <h2 className="flex items-center gap-2.5 text-[16px] font-bold text-slate-900">
                 <Icon name="orders" size={18} className="text-red-600" /> Order Items
               </h2>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Btn size="md" className="border-0 bg-slate-100 hover:bg-slate-200" onClick={() => setLines([blank()])}>
                   Clear Order
+                </Btn>
+                <Btn size="md" kind="dark" icon="list" onClick={() => setPicking(true)}>
+                  Pick from catalog
                 </Btn>
                 <Btn size="md" kind="soft" className="text-[14px] font-bold" onClick={() => setLines((ls) => [...ls, blank()])}>
                   + Add Item
@@ -332,6 +348,10 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
                       +
                     </button>
                   </div>
+                  <span className="adm-num w-[96px] shrink-0 text-right leading-tight" aria-label="Line total">
+                    <b className="block text-[14px] text-slate-900">{rupee((Number(l.price) || 0) * l.qty)}</b>
+                    {l.qty > 1 && Number(l.price) > 0 && <small className="block text-[11px] font-semibold text-slate-500">{rupee(Number(l.price) || 0)} / pc</small>}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [blank()]))}
@@ -347,7 +367,7 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
         </div>
 
         {/* ================= right: summary ================= */}
-        <aside className="xl:sticky xl:top-6 xl:self-start">
+        <aside className="min-w-0 xl:sticky xl:top-6 xl:self-start">
           <div className={cx(box, "space-y-4")}>
             <dl className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-slate-50/70 px-4 text-[12px]">
               <div className="flex items-center justify-between py-3">
@@ -373,11 +393,14 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
             {items.length ? (
               <ul className="adm-scroll max-h-56 space-y-2 overflow-y-auto pr-1 text-[13px]">
                 {items.map((i, k) => (
-                  <li key={k} className="flex justify-between gap-3">
-                    <span className="min-w-0 truncate text-slate-700">
+                  <li key={k} className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 flex-1 truncate text-slate-700">
                       <b>{i.qty}×</b> {i.name || <em className="text-slate-400">unnamed</em>}
                     </span>
-                    <b className="shrink-0">{rupee(i.price * i.qty)}</b>
+                    <span className="shrink-0 text-right leading-tight">
+                      <b className="block">{rupee(i.price * i.qty)}</b>
+                      {i.qty > 1 && <small className="block text-[11px] font-semibold text-slate-500">{rupee(i.price)} / pc</small>}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -487,11 +510,11 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
             {isGst && calc.gstAmount > 0 && <p className="-mt-3 text-right text-[11.5px] text-slate-400">includes {rupee(calc.gstAmount)} GST on {rupee(calc.taxable)}</p>}
 
             <div className="rounded-2xl border border-slate-200 p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Payment</span>
-                <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+                <div className="adm-scroll -mx-1 flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
                   {(["cash", "upi", "card", "split"] as const).map((p) => (
-                    <button key={p} type="button" onClick={() => setPay(p)} className={cx("h-8 rounded-lg px-2.5 text-[12px] font-bold uppercase transition", pay === p ? "bg-white text-slate-900 shadow" : "text-slate-500")}>
+                    <button key={p} type="button" onClick={() => setPay(p)} className={cx("h-8 shrink-0 rounded-lg px-2.5 text-[12px] font-bold uppercase transition", pay === p ? "bg-white text-slate-900 shadow" : "text-slate-500")}>
                       {p}
                     </button>
                   ))}
@@ -548,8 +571,37 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
       <Catalog
         open={picker !== null}
         onClose={() => setPicker(null)}
-        title="Pick from catalog"
+        title="Swap this line"
         onPick={(p) => picker !== null && setLine(picker, { productId: p.id, name: p.name, price: String(p.price) })}
+      />
+      <Catalog
+        open={picking}
+        onClose={() => setPicking(false)}
+        title="Pick items for this bill"
+        addLabel="Add to bill"
+        onAdd={(picks) => {
+          /* Each pick is a {productId, qty} from the catalog cart. For items
+             the bill already has, bump the qty; otherwise add a fresh line.
+             A blank starter line (name + price empty) is replaced instead of
+             pushed down, so the first pick fills the row the user just saw. */
+          setLines((ls) => {
+            let next = [...ls];
+            for (const { productId, qty } of picks) {
+              const prod = s.products.find((x) => x.id === productId);
+              if (!prod) continue;
+              const existing = next.findIndex((l) => l.productId === prod.id);
+              if (existing >= 0) {
+                next[existing] = { ...next[existing], qty: Math.min(999, next[existing].qty + qty) };
+                continue;
+              }
+              const line: Line = { key: ++seq, productId: prod.id, name: prod.name, price: String(prod.price), qty };
+              if (next.length === 1 && !next[0].name.trim() && !next[0].price) next = [line];
+              else next.push(line);
+            }
+            return next;
+          });
+          return true;
+        }}
       />
 
       <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title={printing ? "Print — choose printer & paper" : "Save order"}>

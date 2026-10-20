@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 /* Small admin UI kit — Tailwind classes, one place. */
@@ -128,6 +128,14 @@ const P: Record<string, React.ReactNode> = {
       <circle cx="12" cy="12" r="3" />
     </>
   ),
+  eyeoff: <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.52 13.52 0 0 0 2 11s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M14.12 14.12A3 3 0 1 1 9.88 9.88M2 2l20 20" />,
+  kitchen: (
+    <>
+      <path d="M4 11h16M5 11v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9" />
+      <path d="M12 11V6a3 3 0 0 1 3-3h.5A2.5 2.5 0 0 1 18 5.5" />
+      <path d="M12 11V6a3 3 0 0 0-3-3h-.5A2.5 2.5 0 0 0 6 5.5" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof P;
@@ -200,20 +208,41 @@ const TONES = {
 } as const;
 export type Tone = keyof typeof TONES;
 
-export function Kpi({ label, value, hint, icon, tone = "emerald", small }: { label: string; value: React.ReactNode; hint?: string; icon: IconName; tone?: Tone; small?: boolean }) {
+/** A KPI tile. Always tappable — click opens a modal that shows the full value
+    (useful on narrow phones where ₹25,133 might render as "₹25,1…" on the card)
+    plus optional `details` (a list, breakdown, or whatever extra context the
+    caller wants to show). */
+export function Kpi({ label, value, hint, icon, tone = "emerald", small, details }: { label: string; value: React.ReactNode; hint?: string; icon: IconName; tone?: Tone; small?: boolean; details?: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)]">
-      <div className="flex items-start justify-between gap-3">
-        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">{label}</span>
-        <span className={cx("grid h-7 w-7 shrink-0 place-items-center rounded-full", TONES[tone])}>
-          <Icon name={icon} size={14} stroke={2.4} />
-        </span>
-      </div>
-      <div className={cx("adm-num mt-2 truncate font-extrabold text-slate-900", small ? "text-[19px]" : "text-[23px]")} title={typeof value === "string" ? value : undefined}>
-        {value}
-      </div>
-      {hint && <p className="mt-1.5 truncate text-[11px] text-slate-400">{hint}</p>}
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="min-w-0 cursor-pointer rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)] transition hover:border-slate-200 hover:shadow-[0_4px_14px_-4px_rgba(15,23,42,.15)] active:scale-[.99]"
+        aria-label={`${label} — tap for details`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">{label}</span>
+          <span className={cx("grid h-7 w-7 shrink-0 place-items-center rounded-full", TONES[tone])}>
+            <Icon name={icon} size={14} stroke={2.4} />
+          </span>
+        </div>
+        <div className={cx("adm-num mt-2 truncate font-extrabold text-slate-900", small ? "text-[19px]" : "text-[23px]")} title={typeof value === "string" ? value : undefined}>
+          {value}
+        </div>
+        {hint && <p className="mt-1.5 truncate text-[11px] text-slate-400">{hint}</p>}
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title={label} wide={!!details}>
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="adm-num break-words text-[30px] font-extrabold leading-tight text-slate-900 sm:text-[36px]">{value}</div>
+            {hint && <p className="mt-1 text-[13px] text-slate-500">{hint}</p>}
+          </div>
+          {details}
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -546,3 +575,51 @@ export function downloadText(name: string, text: string, type = "text/csv;charse
 }
 
 export const csv = (rows: (string | number)[][]) => rows.map((r) => r.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(",")).join("\n");
+
+/* ---------------- Excel export ----------------
+   A real Excel workbook, saved as .xls — SpreadsheetML 2003 XML, which every
+   modern Excel (Windows, Mac, mobile) and LibreOffice opens natively, with real
+   columns and number-typed cells. No library needed. Pass a single rows[][] for
+   one sheet, or [{name, rows}] for a multi-sheet workbook. */
+export type ExcelSheet = { name: string; rows: (string | number | null | undefined)[][] };
+
+const xmlEsc = (v: unknown) =>
+  String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+const safeSheetName = (name: string, i: number) => (name || `Sheet${i + 1}`).replace(/[\\/?*[\]:]/g, "-").slice(0, 31);
+function excelCell(v: unknown) {
+  if (v == null || v === "") return `<Cell><Data ss:Type="String"></Data></Cell>`;
+  if (typeof v === "number" && Number.isFinite(v)) return `<Cell><Data ss:Type="Number">${v}</Data></Cell>`;
+  return `<Cell><Data ss:Type="String">${xmlEsc(v)}</Data></Cell>`;
+}
+
+export function excelWorkbook(sheets: ExcelSheet[]): string {
+  const parts: string[] = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<?mso-application progid="Excel.Sheet"?>',
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">',
+    '<Styles><Style ss:ID="h"><Font ss:Bold="1"/><Interior ss:Color="#F0F0F0" ss:Pattern="Solid"/></Style></Styles>',
+  ];
+  sheets.forEach((s, i) => {
+    parts.push(`<Worksheet ss:Name="${xmlEsc(safeSheetName(s.name, i))}"><Table>`);
+    s.rows.forEach((row, r) => {
+      const style = r === 0 ? ' ss:StyleID="h"' : "";
+      parts.push(`<Row${style}>${row.map(excelCell).join("")}</Row>`);
+    });
+    parts.push("</Table></Worksheet>");
+  });
+  parts.push("</Workbook>");
+  return parts.join("");
+}
+
+export function downloadExcel(name: string, sheetsOrRows: ExcelSheet[] | (string | number | null | undefined)[][]) {
+  const sheets: ExcelSheet[] = Array.isArray(sheetsOrRows[0]) && !("name" in (sheetsOrRows[0] as object))
+    ? [{ name: "Sheet1", rows: sheetsOrRows as (string | number | null | undefined)[][] }]
+    : (sheetsOrRows as ExcelSheet[]);
+  const xml = excelWorkbook(sheets);
+  const file = name.endsWith(".xls") || name.endsWith(".xlsx") ? name : `${name}.xls`;
+  downloadText(file, xml, "application/vnd.ms-excel;charset=utf-8");
+}

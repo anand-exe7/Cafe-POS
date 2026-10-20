@@ -30,6 +30,63 @@ const thumb = (src: string) => (src.includes("images.unsplash.com") ? src.replac
 const th = "px-4 py-3.5 text-left text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-500 whitespace-nowrap";
 const td = "px-4 py-3 text-[13px]";
 
+/* Table-ish list of products — shown inside a KPI tile's modal when the user
+   taps "Low stock", "Sold out" or "On the menu" to see what's behind the number. */
+function ProductSummaryList({ products, empty, showStock, showStatus }: { products: Product[]; empty: string; showStock?: boolean; showStatus?: boolean }) {
+  if (!products.length) return <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-500">{empty}</p>;
+  return (
+    <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
+      {products.map((p) => (
+        <li key={p.id} className="flex items-center gap-3 bg-white px-3 py-2.5">
+          {p.image ? <img src={thumb(p.image)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" loading="lazy" /> : <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 font-bold text-slate-400">{p.name[0]}</span>}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13.5px] font-semibold text-slate-900">{p.name}</p>
+            <p className="truncate text-[11.5px] text-slate-500">{p.category} · {rupee(p.price)}</p>
+          </div>
+          <div className="shrink-0 text-right text-[12px]">
+            {showStock && (
+              <span className={cx("adm-num font-bold", p.stock === 0 ? "text-red-600" : p.stock !== null && p.stock <= p.lowAt ? "text-amber-600" : "text-slate-700")}>
+                {p.stock === null ? "∞" : p.stock} {p.stock !== null && "left"}
+              </span>
+            )}
+            {showStatus && (p.active ? <Badge tone="green">On menu</Badge> : <Badge tone="slate">Hidden</Badge>)}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* Per-product contribution to total stock value, biggest first — explains what
+   makes up the Stock Value KPI. */
+function StockValueBreakdown({ products }: { products: Product[] }) {
+  const rows = products
+    .filter((p) => p.stock !== null && p.stock > 0)
+    .map((p) => ({ p, value: p.price * (p.stock ?? 0) }))
+    .sort((a, b) => b.value - a.value);
+  if (!rows.length) return <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-[13px] text-slate-500">Nothing is tracked yet — turn on stock tracking on a product to see its value here.</p>;
+  const total = rows.reduce((a, r) => a + r.value, 0) || 1;
+  return (
+    <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
+      {rows.map(({ p, value }) => (
+        <li key={p.id} className="bg-white px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="min-w-0 truncate font-semibold text-slate-900">{p.name}</span>
+            <b className="adm-num shrink-0 text-slate-900">{rupee(value)}</b>
+          </div>
+          <div className="mt-1 flex items-center gap-2 text-[11.5px] text-slate-500">
+            <span className="shrink-0">{p.stock}× {rupee(p.price)}</span>
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className="adm-fill h-full rounded-full bg-sky-500" style={{ width: `${(value / total) * 100}%` }} />
+            </div>
+            <span className="shrink-0 text-slate-400">{Math.round((value / total) * 100)}%</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 type StockFilter = "all" | "menu" | "hidden" | "low" | "out";
 
 /* What the screen should show the instant a stock button is pressed; the server
@@ -198,10 +255,38 @@ export default function InventoryPage() {
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <Kpi label="On the menu" value={`${s.products.filter((p) => p.active).length} / ${s.products.length}`} hint="Visible to guests" icon="box" tone="emerald" />
-        <Kpi label="Low stock" value={low.length} hint="At or below alert level" icon="alert" tone={low.length ? "amber" : "slate"} />
-        <Kpi label="Sold out" value={out.length} hint="Shown as sold out" icon="x" tone={out.length ? "red" : "slate"} />
-        <Kpi label="Stock value" value={rupee(value)} hint="Tracked stock at menu price" icon="rupee" tone="sky" />
+        <Kpi
+          label="On the menu"
+          value={`${s.products.filter((p) => p.active).length} / ${s.products.length}`}
+          hint="Visible to guests"
+          icon="box"
+          tone="emerald"
+          details={<ProductSummaryList products={s.products} empty="No products yet." showStatus />}
+        />
+        <Kpi
+          label="Low stock"
+          value={low.length}
+          hint="At or below alert level"
+          icon="alert"
+          tone={low.length ? "amber" : "slate"}
+          details={<ProductSummaryList products={low} empty="Nothing is running low — stock levels look healthy." showStock />}
+        />
+        <Kpi
+          label="Sold out"
+          value={out.length}
+          hint="Shown as sold out"
+          icon="x"
+          tone={out.length ? "red" : "slate"}
+          details={<ProductSummaryList products={out} empty="Nothing is sold out right now." showStock />}
+        />
+        <Kpi
+          label="Stock value"
+          value={rupee(value)}
+          hint="Tracked stock at menu price"
+          icon="rupee"
+          tone="sky"
+          details={<StockValueBreakdown products={s.products} />}
+        />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
