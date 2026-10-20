@@ -162,6 +162,81 @@ export type StockMovement = {
   createdAt: number;
 };
 
+/* ---------------- Raw-ingredient inventory ---------------- */
+
+export type IngredientUnit = "g" | "ml";
+
+export type Ingredient = {
+  id: string;
+  name: string;
+  unit: IngredientUnit;
+  /** How much is on hand right now (same unit as `unit`). */
+  stock: number;
+  /** Weighted-average rupees per gram / ml, kept up to date on each purchase. */
+  costPerUnit: number;
+  /** warn in admin when stock falls to this or below */
+  lowAt: number;
+  active: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/** A reusable ingredient list for a product. Picking a recipe fills the batch
+    logger with these rows (still editable) so a repeat run is one click. */
+export type RecipeItem = { ingredientId: string; qty: number; note: string };
+export type Recipe = {
+  id: string;
+  name: string;
+  note: string;
+  items: RecipeItem[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+/** A production run (e.g. "Chocolate cake × 2"), with the uses that fed it. */
+export type Batch = {
+  id: string;
+  name: string;
+  note: string;
+  /** Sum of the `cost` of all uses booked to this batch. */
+  totalCost: number;
+  createdAt: number;
+};
+
+export type IngredientMoveType = "purchase" | "use" | "waste" | "adjust";
+
+export type IngredientMove = {
+  id: string;
+  ingredientId: string;
+  ingredientName: string;
+  unit: IngredientUnit;
+  /** signed: + into stock, − out of it */
+  qty: number;
+  type: IngredientMoveType;
+  /** rupee value of this line, always ≥ 0 */
+  cost: number;
+  balanceAfter: number;
+  batchId: string | null;
+  note: string;
+  createdAt: number;
+};
+
+/** One page of the ingredient ledger, plus period totals and per-ingredient summary. */
+export type IngredientLedger = {
+  rows: IngredientMove[];
+  total: number;
+  page: number;
+  pages: number;
+  stats: {
+    purchased: { qty: number; cost: number };
+    used: { qty: number; cost: number };
+    wasted: { qty: number; cost: number };
+    adjusted: { qty: number };
+  };
+  perIngredient: { id: string; name: string; unit: IngredientUnit; in: number; used: number; wasted: number; close: number }[];
+  ingredients: { id: string; name: string; unit: IngredientUnit }[];
+};
+
 /* Guests never hold an account — they order from the shop's QR code and are known
    by the mobile they leave with the order. So every stored user is someone who has
    been given admin access, keyed by that same mobile, which is what lets a regular
@@ -183,6 +258,13 @@ export type Settings = {
   shopName: string;
   /** origin printed into QR codes, e.g. https://order.cheflovingcakes.in */
   publicUrl: string;
+  /** When true, POS Billing is counter-only — the customer-tab flow is hidden. */
+  walkInsOnly: boolean;
+  /** When false, the on-screen kitchen ticket queue (KOT) hides for everyone. */
+  kotEnabled: boolean;
+  /** When false the customer site is menu-only (no cart, no tabs) and the admin's
+      "Open tabs" page + Billing's "Customer tab" mode hide too. */
+  orderingEnabled: boolean;
   adminHash: string | null;
   secret: string;
 };
@@ -199,11 +281,14 @@ export type DB = {
   users: StaffUser[];
   expenses: Expense[];
   expenseCategories: ExpenseCategory[];
+  ingredients: Ingredient[];
+  batches: Batch[];
+  recipes: Recipe[];
 };
 
 /** What the admin panel receives (no secrets). */
 export type AdminState = Omit<DB, "settings" | "users"> & {
-  settings: { shopName: string; publicUrl: string };
+  settings: { shopName: string; publicUrl: string; walkInsOnly: boolean; kotEnabled: boolean; orderingEnabled: boolean };
   users: PublicUser[];
 };
 
@@ -222,6 +307,9 @@ export type TabClose = {
 /** What a customer receives: the menu, plus their tab when their mobile has one open. */
 export type TabView = {
   shopName: string;
+  /** Mirrors Settings.orderingEnabled — when false the menu renders without
+      cart / tab / ordering controls. */
+  orderingEnabled: boolean;
   menu: MenuItem[];
   closed: TabClose | null;
   tab: {

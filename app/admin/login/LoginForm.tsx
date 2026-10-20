@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Btn, Field, inputCls } from "../_ui/kit";
+import { Btn, Field, Icon, cx, inputCls } from "../_ui/kit";
 
 export default function LoginForm() {
   const router = useRouter();
   const [pw, setPw] = useState("");
+  const [show, setShow] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -29,18 +30,39 @@ export default function LoginForm() {
 
   return (
     <main className="grid min-h-screen place-items-center p-4">
-      <form onSubmit={submit} className="adm-in w-full max-w-[400px] rounded-[28px] bg-white p-8 shadow-[0_1px_3px_rgba(15,23,42,.06),0_20px_50px_-20px_rgba(15,23,42,.25)]">
+      <form onSubmit={submit} className="adm-in w-full max-w-[400px] rounded-[28px] bg-white p-6 shadow-[0_1px_3px_rgba(15,23,42,.06),0_20px_50px_-20px_rgba(15,23,42,.25)] sm:p-8">
         <svg width="44" height="44" viewBox="0 0 32 32" aria-hidden="true">
           <path d="M17 3c-1 6-4 10-8 14M17 3c2 5 5 9 8 11" stroke="#6b8f3a" strokeWidth="2" fill="none" strokeLinecap="round" />
           <path d="M17 3c3-1 6 0 8 2-3 1-6 0-8-2z" fill="#8fae55" />
           <circle cx="9" cy="22" r="6.5" fill="#d7263d" />
           <circle cx="23" cy="20" r="6.5" fill="#b81d33" />
         </svg>
-        <h1 className="adm-title mt-4 text-[32px] leading-none text-slate-900">Admin sign in</h1>
+        <h1 className="adm-title mt-4 text-[28px] leading-none text-slate-900 sm:text-[32px]">Sign in</h1>
         <p className="mt-1 text-[14px] text-slate-500">Chef Loving Cakes · orders &amp; billing</p>
         <div className="mt-6 space-y-4">
           <Field label="Password">
-            <input type="password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" autoFocus required minLength={1} />
+            <div className="relative">
+              <input
+                type={show ? "text" : "password"}
+                className={cx(inputCls, "pr-11")}
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                autoComplete="current-password"
+                autoFocus
+                required
+                minLength={1}
+              />
+              <button
+                type="button"
+                onClick={() => setShow((v) => !v)}
+                className="absolute inset-y-0 right-0 grid w-11 place-items-center text-slate-400 hover:text-slate-700"
+                aria-label={show ? "Hide password" : "Show password"}
+                aria-pressed={show}
+                tabIndex={-1}
+              >
+                <Icon name={show ? "eyeoff" : "eye"} size={17} />
+              </button>
+            </div>
           </Field>
         </div>
         {err && (

@@ -4,17 +4,24 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAdmin } from "./Store";
-import { Btn, Field, Icon, Modal, cx, inputCls, type IconName } from "./kit";
+import { Btn, Icon, Modal, Switch, cx, type IconName } from "./kit";
 
-const NAV: { href: string; label: string; icon: IconName }[] = [
-  { href: "/admin/billing", label: "Billing", icon: "billing" },
-  { href: "/admin/orders", label: "Orders", icon: "orders" },
-  { href: "/admin/analytics", label: "Analytics", icon: "chart" },
-  { href: "/admin", label: "Open tabs", icon: "tables" },
-  { href: "/admin/inventory", label: "Inventory", icon: "box" },
-  { href: "/admin/inventory/movements", label: "Stock movement", icon: "list" },
-  { href: "/admin/expenses", label: "Expenses", icon: "bag" },
-  { href: "/admin/coupons", label: "Coupons", icon: "coupon" },
+type Nav = { href: string; label: string; icon: IconName; roles: ("admin" | "staff")[]; requiresKot?: boolean; hideWhen?: (s: { walkInsOnly: boolean; kotEnabled: boolean; orderingEnabled: boolean }) => boolean };
+
+/* Pages the sidebar may show. Staff sees only the four the client agreed on
+   (billing, orders, open tabs, inventory) plus the kitchen queue when it's on. */
+const NAV: Nav[] = [
+  { href: "/admin/billing", label: "Billing", icon: "billing", roles: ["admin", "staff"] },
+  { href: "/admin/orders", label: "Orders", icon: "orders", roles: ["admin", "staff"] },
+  { href: "/admin/analytics", label: "Analytics", icon: "chart", roles: ["admin"] },
+  { href: "/admin", label: "Open tabs", icon: "tables", roles: ["admin", "staff"], hideWhen: (s) => s.walkInsOnly || !s.orderingEnabled },
+  { href: "/admin/kitchen", label: "Kitchen (KOT)", icon: "kitchen", roles: ["admin", "staff"], requiresKot: true },
+  { href: "/admin/inventory", label: "Inventory", icon: "box", roles: ["admin", "staff"] },
+  { href: "/admin/inventory/ingredients", label: "Ingredients & waste", icon: "orders", roles: ["admin", "staff"] },
+  { href: "/admin/inventory/ingredient-moves", label: "Ingredient log", icon: "list", roles: ["admin", "staff"] },
+  { href: "/admin/inventory/movements", label: "Stock movement", icon: "list", roles: ["admin"] },
+  { href: "/admin/expenses", label: "Expenses", icon: "bag", roles: ["admin"] },
+  { href: "/admin/coupons", label: "Coupons", icon: "coupon", roles: ["admin"] },
 ];
 
 const Cherry = () => (
@@ -29,23 +36,54 @@ const Cherry = () => (
 
 function Settings({ onClose }: { onClose: () => void }) {
   const { s, act, toast } = useAdmin();
-  const [url, setUrl] = useState(s.settings.publicUrl);
+  const [walkInsOnly, setWalkInsOnly] = useState(s.settings.walkInsOnly);
+  const [kotEnabled, setKotEnabled] = useState(s.settings.kotEnabled);
+  const [orderingEnabled, setOrderingEnabled] = useState(s.settings.orderingEnabled);
 
-  const saveUrl = async () => {
-    const r = await act("settings.update", { publicUrl: url });
-    if (r.ok) toast({ kind: "ok", title: "Saved. Re-print the QR code if the address changed." });
+  const toggleOrdering = async (v: boolean) => {
+    setOrderingEnabled(v);
+    const r = await act("settings.update", { orderingEnabled: v });
+    if (!r.ok) setOrderingEnabled(!v);
+    else toast({ kind: "ok", title: v ? "Customer ordering is on — guests can order from their phone." : "Customer site is now menu-only." });
+  };
+
+  const toggleWalkIns = async (v: boolean) => {
+    setWalkInsOnly(v);
+    const r = await act("settings.update", { walkInsOnly: v });
+    if (!r.ok) setWalkInsOnly(!v);
+    else toast({ kind: "ok", title: v ? "POS switched to counter walk-ins only." : "Customer tabs are back on." });
+  };
+
+  const toggleKot = async (v: boolean) => {
+    setKotEnabled(v);
+    const r = await act("settings.update", { kotEnabled: v });
+    if (!r.ok) setKotEnabled(!v);
+    else toast({ kind: "ok", title: v ? "Kitchen queue (KOT) is on." : "Kitchen queue (KOT) is off." });
   };
 
   return (
     <Modal open onClose={onClose} title="Settings">
-      <div className="space-y-6">
-        <div>
-          <Field label="Public address for the QR code" hint="The address phones use to reach this app, e.g. https://order.cheflovingcakes.in or http://192.168.1.20:3000. Leave blank to use the address you're on now.">
-            <input className={inputCls} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
-          </Field>
-          <Btn kind="dark" className="mt-3" onClick={saveUrl}>
-            Save address
-          </Btn>
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <b className="block text-[13.5px] text-slate-900">Customer ordering</b>
+            <p className="mt-0.5 text-[12.5px] text-slate-500">On: guests can scan, order and open a tab from their phone. Off: the site shows the menu card only — no cart, no tabs, no kitchen tickets.</p>
+          </div>
+          <Switch on={orderingEnabled} onChange={toggleOrdering} label="Customer ordering" />
+        </div>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <b className="block text-[13.5px] text-slate-900">Walk-ins only</b>
+            <p className="mt-0.5 text-[12.5px] text-slate-500">Hide the customer-tab flow in POS Billing. Every bill is a counter walk-in.</p>
+          </div>
+          <Switch on={walkInsOnly} onChange={toggleWalkIns} label="Walk-ins only" />
+        </div>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <b className="block text-[13.5px] text-slate-900">Kitchen queue (KOT)</b>
+            <p className="mt-0.5 text-[12.5px] text-slate-500">On-screen kitchen tickets for the chef. Turn off if the kitchen doesn't need a queue.</p>
+          </div>
+          <Switch on={kotEnabled} onChange={toggleKot} label="Kitchen queue" />
         </div>
       </div>
     </Modal>
@@ -55,7 +93,7 @@ function Settings({ onClose }: { onClose: () => void }) {
 export default function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
-  const { s, floor, toasts, dismiss, pending, answer, printNode, sound, setSound } = useAdmin();
+  const { s, role, floor, toasts, dismiss, pending, answer, printNode, sound, setSound } = useAdmin();
   const [menu, setMenu] = useState(false);
   const [settings, setSettings] = useState(false);
   const [rail, setRail] = useState(false); // desktop sidebar collapsed to icons
@@ -79,6 +117,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   }
 
   const fresh = s.orders.filter((o) => o.source === "customer" && o.status === "new").length;
+  const kitchenPending = s.settings.kotEnabled ? s.orders.filter((o) => o.status === "new" || o.status === "preparing").length : 0;
   const billReq = floor.filter((f) => f.billRequested).length;
   const busy = floor.length;
   const low = s.products.filter((p) => p.active && p.stock !== null && p.stock <= p.lowAt).length;
@@ -88,6 +127,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <span className="adm-pulse grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white">{fresh}</span>
     ) : busy ? (
       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{busy}</span>
+    ) : null,
+    "/admin/kitchen": kitchenPending ? (
+      <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">{kitchenPending}</span>
     ) : null,
     "/admin/billing": billReq ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-amber-950">{billReq}</span> : null,
     "/admin/inventory": low ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700">{low}</span> : null,
@@ -104,24 +146,25 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   };
 
   /* the longest matching entry wins, so /admin/inventory/movements doesn't also light up Inventory */
+  const nav = NAV.filter((n) => n.roles.includes(role) && !(n.requiresKot && !s.settings.kotEnabled) && !(n.hideWhen && n.hideWhen(s.settings)));
   const active = (href: string) =>
-    href === "/admin" ? path === "/admin" : path.startsWith(href) && !NAV.some((n) => n.href.length > href.length && n.href.startsWith(href) && path.startsWith(n.href));
+    href === "/admin" ? path === "/admin" : path.startsWith(href) && !nav.some((n) => n.href.length > href.length && n.href.startsWith(href) && path.startsWith(n.href));
 
   const renderSide = (mini: boolean) => (
     <div className="flex h-full flex-col">
-      <Link href="/admin" title="Chef Loving · Admin" className={cx("adm-side__brand flex items-center gap-3 pb-6 pt-6", mini ? "justify-center px-0" : "px-5")}>
+      <Link href={role === "admin" ? "/admin" : "/admin/billing"} title="Chef Loving · Admin" className={cx("adm-side__brand flex items-center gap-3 pb-6 pt-6", mini ? "justify-center px-0" : "px-5")}>
         <Cherry />
         {!mini && (
           <span className="leading-tight">
             <b className="block text-[19px] italic" style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 500 }}>
               Chef Loving
             </b>
-            <small className="text-[10px] font-bold uppercase tracking-[0.18em]">Admin console</small>
+            <small className="text-[10px] font-bold uppercase tracking-[0.18em]">{role === "admin" ? "Admin console" : "Staff console"}</small>
           </span>
         )}
       </Link>
       <nav className="flex-1 space-y-1 px-3" aria-label="Admin">
-        {NAV.map((n) => {
+        {nav.map((n) => {
           const on = active(n.href);
           return (
             <Link
@@ -147,10 +190,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <Icon name="globe" size={17} />
           {!mini && "Guest website"}
         </a>
-        <button type="button" onClick={() => setSettings(true)} title={mini ? "Settings" : undefined} className={cx("adm-link flex h-10 w-full items-center rounded-xl text-[13px] font-semibold", mini ? "justify-center px-0" : "gap-3 px-3")}>
-          <Icon name="sliders" size={17} />
-          {!mini && "Settings"}
-        </button>
+        {role === "admin" && (
+          <button type="button" onClick={() => setSettings(true)} title={mini ? "Settings" : undefined} className={cx("adm-link flex h-10 w-full items-center rounded-xl text-[13px] font-semibold", mini ? "justify-center px-0" : "gap-3 px-3")}>
+            <Icon name="sliders" size={17} />
+            {!mini && "Settings"}
+          </button>
+        )}
         <button type="button" onClick={signOut} title={mini ? "Sign out" : undefined} className={cx("adm-link flex h-10 w-full items-center rounded-xl text-[13px] font-semibold", mini ? "justify-center px-0" : "gap-3 px-3")}>
           <Icon name="logout" size={17} />
           {!mini && "Sign out"}
@@ -181,11 +226,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <button type="button" onClick={() => setMenu(true)} className="adm-link grid h-10 w-10 place-items-center rounded-xl" aria-label="Open menu">
             <Icon name="menu" size={20} />
           </button>
-          <b className="flex-1 text-[16px] italic" style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 500 }}>
-            Chef Loving · Admin
+          <b className="min-w-0 flex-1 truncate text-[16px] italic" style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 500 }}>
+            Chef Loving · {role === "admin" ? "Admin" : "Staff"}
           </b>
           {fresh > 0 && (
-            <Link href="/admin" className="rounded-full bg-red-600 px-3 py-1 text-[12px] font-bold text-white">
+            <Link href="/admin" className="shrink-0 rounded-full bg-red-600 px-3 py-1 text-[12px] font-bold text-white">
               {fresh} new
             </Link>
           )}
@@ -199,9 +244,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
         {/* main grows to fill whatever the page doesn't use, so the footer sits on
             the bottom edge of a short page instead of floating under the card */}
-        <div className={cx("flex flex-1 flex-col transition-[padding] duration-200", rail ? "lg:pl-[76px]" : "lg:pl-[248px]")}>
-          <main className="mx-auto w-full max-w-[1480px] flex-1 p-3 sm:p-6">{children}</main>
-          <footer className="mx-auto flex w-full max-w-[1480px] flex-col items-center gap-3 border-t border-slate-200 px-6 py-7 text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:flex-row sm:justify-between">
+        <div className={cx("flex flex-1 flex-col min-w-0 transition-[padding] duration-200", rail ? "lg:pl-[76px]" : "lg:pl-[248px]")}>
+          <main className="mx-auto w-full min-w-0 max-w-[1480px] flex-1 p-3 sm:p-6">{children}</main>
+          <footer className="mx-auto flex w-full max-w-[1480px] flex-col items-center gap-3 border-t border-slate-200 px-4 py-7 text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:flex-row sm:justify-between sm:px-6">
             <span>© 2026 All rights reserved. Chef Loving Cakes.</span>
             <span>
               Powered by <span className="text-red-600">Cenexa Systems</span> ©2026

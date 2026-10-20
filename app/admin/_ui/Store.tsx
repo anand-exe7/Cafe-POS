@@ -4,6 +4,7 @@ import { subscribeChanges } from "@/lib/realtime";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminState, Order, Session } from "@/lib/types";
+import type { Role } from "@/lib/auth";
 import { round2 } from "@/lib/money";
 
 /* ------------------------------------------------------------------
@@ -31,6 +32,8 @@ export type FloorTab = {
 
 type Ctx = {
   s: AdminState;
+  /** Who's signed in — "admin" is the owner, "staff" is a cashier/cook. */
+  role: Role;
   act: <T = unknown>(op: string, args?: Record<string, unknown>, opts?: ActOpts) => Promise<ActResult<T>>;
   refresh: () => Promise<void>;
   toast: (t: Omit<Toast, "id">) => void;
@@ -81,7 +84,7 @@ const soundPref = {
 };
 const noop = () => () => {};
 
-export function AdminProvider({ initial, children }: { initial: AdminState; children: React.ReactNode }) {
+export function AdminProvider({ initial, role, children }: { initial: AdminState; role: Role; children: React.ReactNode }) {
   const router = useRouter();
   const [s, setS] = useState(initial);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -299,6 +302,7 @@ export function AdminProvider({ initial, children }: { initial: AdminState; chil
 
   const value: Ctx = {
     s,
+    role,
     act,
     refresh: poll,
     toast,

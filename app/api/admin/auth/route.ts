@@ -1,12 +1,12 @@
 import { cookies } from "next/headers";
-import { COOKIE, checkPassword, makeToken } from "@/lib/auth";
+import { COOKIE, checkPassword, makeToken, type Role } from "@/lib/auth";
 import { body, handle, isHttps } from "@/lib/http";
 import { db } from "@/lib/db";
 import { loginAttempts } from "@/lib/db/schema";
 import { ApiError } from "@/lib/store";
 import { eq, sql } from "drizzle-orm";
 
-/* POST {password}  → sign in with the admin password
+/* POST {password}  → sign in; the password itself picks the role
    DELETE           → sign out */
 
 
@@ -18,7 +18,11 @@ export async function POST(req: Request) {
     const [f] = await db.select().from(loginAttempts).where(eq(loginAttempts.key, ip));
     if (f && f.lockedUntil > Date.now()) throw new ApiError("Too many attempts. Wait a minute and try again.", 429);
 
-    if (!checkPassword(pw)) {
+    /* The password itself says who's signing in: admin wins when it matches,
+       staff only if it doesn't — so the staff password can never shadow the
+       admin's by sitting first in the check. */
+    const role: Role | null = checkPassword(pw, "admin") ? "admin" : checkPassword(pw, "staff") ? "staff" : null;
+    if (!role) {
       const [row] = await db
         .insert(loginAttempts)
         .values({ key: ip, fails: 1, lockedUntil: 0 })
@@ -29,9 +33,9 @@ export async function POST(req: Request) {
     }
     if (f) await db.delete(loginAttempts).where(eq(loginAttempts.key, ip));
 
-    const tok = makeToken();
+    const tok = makeToken(role);
     (await cookies()).set(COOKIE, tok.value, { httpOnly: true, sameSite: "lax", secure: isHttps(req), path: "/", maxAge: tok.maxAge });
-    return { ok: true };
+    return { ok: true, role };
   });
 }
 
