@@ -4,8 +4,8 @@ import { code, uid } from "./seed";
 import { checkCoupon, computeBill, round2, shopToday } from "./money";
 import { hashPassword } from "./auth";
 import { db, type Db, type Tx } from "./db";
-import { bills, coupons, expenseCategories, expenses, meta, orders, products, sessions, settings, staffUsers, stockMovements } from "./db/schema";
-import type { AdminState, Bill, StockLedger, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Session, StaffUser, StockMoveType, TabClose, TabView } from "./types";
+import { batches, bills, coupons, expenseCategories, expenses, ingredientMoves, ingredients, meta, orders, products, recipes, sessions, settings, staffUsers, stockMovements } from "./db/schema";
+import type { AdminState, Bill, Ingredient, IngredientLedger, IngredientMove, IngredientMoveType, IngredientUnit, StockLedger, MenuItem, Order, OrderItem, OrderStatus, PayMethod, Product, PublicUser, Recipe, RecipeItem, Session, StaffUser, StockMoveType, TabClose, TabView } from "./types";
 
 /* Every read/write the app makes, with validation. Route handlers are thin wrappers.
    Writes run inside store.mutate(), which serializes them and rolls back on error. */
@@ -33,6 +33,13 @@ function mobile(v: unknown): string | null {
 }
 
 const first = async <T>(rows: Promise<T[]>): Promise<T | null> => (await rows)[0] ?? null;
+
+/* Ingredient quantities use three decimals (down to the milligram); per-unit cost
+   uses six so a cheap bulk good like sugar doesn't round away to ₹0 per gram. */
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+const round6 = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
+/** Prints a g/ml quantity for an error message, dropping trailing zeros. */
+const fmtQty = (n: number) => (Math.round(n * 1000) / 1000).toString();
 
 async function must<T>(rows: Promise<T[]>, what: string): Promise<T> {
   const hit = await first(rows);
@@ -102,13 +109,15 @@ async function lastClose(q: Q, phone: string): Promise<TabClose | null> {
 async function view(q: Q, phone: string): Promise<TabView> {
   const s = await openSession(q, phone);
   const sid = s?.id;
-  const [all, name, list, closed, cps] = await Promise.all([
+  const [all, st, list, closed, cps] = await Promise.all([
     q.select().from(products).orderBy(asc(products.createdAt), asc(products.id)),
-    shopNameOf(q),
+    first(q.select({ n: settings.shopName, ord: settings.orderingEnabled }).from(settings).where(eq(settings.id, 1))),
     sid ? q.select().from(orders).where(eq(orders.sessionId, sid)).orderBy(asc(orders.createdAt), asc(orders.no)) : Promise.resolve([] as Order[]),
     !s && phone ? lastClose(q, phone) : Promise.resolve(null),
     s?.couponCode ? q.select().from(coupons) : Promise.resolve([]),
   ]);
+  const name = st?.n ?? "Cafe";
+  const orderingEnabled = st?.ord ?? true;
   const live = list.filter((o) => o.status !== "cancelled");
   const total = round2(live.reduce((a, o) => a + o.subtotal, 0));
   const cp = s?.couponCode ? cps.find((c) => c.code === s.couponCode) ?? null : null;
@@ -116,9 +125,10 @@ async function view(q: Q, phone: string): Promise<TabView> {
   const discount = cp && check?.ok ? computeBill({ items: live.flatMap((o) => o.items), coupon: cp, manualType: "amount", manualValue: 0, extra: 0 }).couponDiscount : 0;
   return {
     shopName: name,
+    orderingEnabled,
     menu: menuOf(all),
     closed,
-    tab: s
+    tab: !orderingEnabled ? null : s
       ? {
           orders: list.map((o) => ({ no: o.no, items: o.items, status: o.status, subtotal: o.subtotal, createdAt: o.createdAt })),
           total,
@@ -265,7 +275,7 @@ export function removeCoupon(raw: unknown) {
 /* ================================ admin side ================================ */
 
 export async function adminState(): Promise<AdminState> {
-  const [m, st, prods, sess, ords, bls, cps, us, exps, ecats] = await Promise.all([
+  const [m, st, prods, sess, ords, bls, cps, us, exps, ecats, ings, btchs, rcps] = await Promise.all([
     db.select().from(meta).where(eq(meta.id, 1)),
     db.select().from(settings).where(eq(settings.id, 1)),
     db.select().from(products).orderBy(asc(products.createdAt), asc(products.id)),
@@ -276,11 +286,20 @@ export async function adminState(): Promise<AdminState> {
     db.select().from(staffUsers).orderBy(asc(staffUsers.createdAt), asc(staffUsers.id)),
     db.select().from(expenses).orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
     db.select().from(expenseCategories).orderBy(asc(expenseCategories.createdAt), asc(expenseCategories.name)),
+    db.select().from(ingredients).orderBy(asc(ingredients.name)),
+    db.select().from(batches).orderBy(desc(batches.createdAt), desc(batches.id)).limit(100),
+    db.select().from(recipes).orderBy(asc(recipes.name)),
   ]);
   return {
     version: m[0]?.version ?? 0,
     seq: { order: m[0]?.orderSeq ?? 0 },
-    settings: { shopName: st[0]?.shopName ?? "Cafe", publicUrl: st[0]?.publicUrl ?? "" },
+    settings: {
+      shopName: st[0]?.shopName ?? "Cafe",
+      publicUrl: st[0]?.publicUrl ?? "",
+      walkInsOnly: st[0]?.walkInsOnly ?? false,
+      kotEnabled: st[0]?.kotEnabled ?? true,
+      orderingEnabled: st[0]?.orderingEnabled ?? true,
+    },
     products: prods,
     sessions: sess,
     orders: ords,
@@ -289,6 +308,9 @@ export async function adminState(): Promise<AdminState> {
     users: us.map(publicUser),
     expenses: exps,
     expenseCategories: ecats,
+    ingredients: ings,
+    batches: btchs,
+    recipes: rcps,
   };
 }
 
@@ -341,6 +363,94 @@ export async function stockLedger(p: URLSearchParams): Promise<StockLedger> {
   const returned = sum("cancelled_order") + sum("void_bill");
   const adjusted = sum("adjustment");
   return { rows, total: n, page, pages, stats: { added, sold, removed, returned, adjusted, net: added - sold - removed + returned + adjusted }, perProduct, products };
+}
+
+/** The raw-ingredient ledger: paged rows, with totals and a per-ingredient summary
+    that both cover the whole filtered period (so paging doesn't change the numbers).
+    Filters: from/to (ms), type ("all" | purchase | use | waste | adjust), iid, q. */
+export async function ingredientLedger(p: URLSearchParams): Promise<IngredientLedger> {
+  const from = Number(p.get("from")) || null;
+  const to = Number(p.get("to")) || null;
+  const size = Math.min(p.get("export") ? 10000 : 200, Math.max(1, Math.floor(Number(p.get("size"))) || 25));
+  const type = p.get("type") ?? "all";
+  const iid = p.get("iid") ?? "all";
+  const q = (p.get("q") ?? "").trim().slice(0, 80).replace(/[\\%_]/g, (c) => "\\" + c);
+  const M = ingredientMoves;
+
+  const inRange = and(from ? gte(M.createdAt, from) : undefined, to ? lte(M.createdAt, to) : undefined);
+  const where = and(
+    inRange,
+    type !== "all" ? eq(M.type, type as IngredientMoveType) : undefined,
+    iid !== "all" ? eq(M.ingredientId, iid) : undefined,
+    q ? or(ilike(M.ingredientName, `%${q}%`), ilike(M.note, `%${q}%`)) : undefined,
+  );
+
+  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(M).where(where);
+  const pages = Math.max(1, Math.ceil(n / size));
+  const page = Math.min(pages, Math.max(1, Math.floor(Number(p.get("page"))) || 1));
+
+  /* Column sort — clicking a header on the admin page flips to desc/asc on that key.
+     Default is newest-first by date, matching how the user reads a running log. */
+  const sort = (p.get("sort") ?? "date").toLowerCase();
+  const dir = (p.get("dir") ?? "desc").toLowerCase() === "asc" ? asc : desc;
+  const sortCol =
+    sort === "ingredient" ? M.ingredientName
+    : sort === "type" ? M.type
+    : sort === "qty" ? sql`abs(${M.qty})`
+    : sort === "cost" ? M.cost
+    : sort === "balance" ? M.balanceAfter
+    : M.createdAt;
+  const orderBy = sort === "date"
+    ? [dir(M.createdAt), dir(M.id)]
+    : [dir(sortCol), desc(M.createdAt), desc(M.id)];
+
+  const [rows, byType, perIngredient, ingList] = await Promise.all([
+    db.select().from(M).where(where).orderBy(...orderBy).limit(size).offset((page - 1) * size),
+    db
+      .select({ type: M.type, qty: sql<number>`coalesce(sum(abs(${M.qty})), 0)::float`, cost: sql<number>`coalesce(sum(${M.cost}), 0)::float` })
+      .from(M)
+      .where(inRange)
+      .groupBy(M.type),
+    db
+      .select({
+        id: M.ingredientId,
+        name: sql<string>`max(${M.ingredientName})`,
+        unit: sql<IngredientUnit>`max(${M.unit})`,
+        in: sql<number>`coalesce(sum(case when ${M.type} = 'purchase' then ${M.qty} else 0 end), 0)::float`,
+        used: sql<number>`coalesce(sum(case when ${M.type} = 'use' then -${M.qty} else 0 end), 0)::float`,
+        wasted: sql<number>`coalesce(sum(case when ${M.type} = 'waste' then -${M.qty} else 0 end), 0)::float`,
+        close: sql<number>`coalesce((array_agg(${M.balanceAfter} order by ${M.createdAt} desc, ${M.id} desc))[1], 0)::float`,
+      })
+      .from(M)
+      .where(inRange)
+      .groupBy(M.ingredientId)
+      .orderBy(sql`sum(abs(${M.qty})) desc`),
+    db
+      .select({ id: ingredients.id, name: ingredients.name, unit: ingredients.unit })
+      .from(ingredients)
+      .where(eq(ingredients.active, true))
+      .orderBy(asc(ingredients.name)),
+  ]);
+
+  const kind = (t: IngredientMoveType) => byType.find((r) => r.type === t) ?? { qty: 0, cost: 0 };
+  const purchased = kind("purchase");
+  const used = kind("use");
+  const wasted = kind("waste");
+  const adjustQty = byType.find((r) => r.type === "adjust")?.qty ?? 0;
+  return {
+    rows,
+    total: n,
+    page,
+    pages,
+    stats: {
+      purchased: { qty: round3(purchased.qty), cost: round2(purchased.cost) },
+      used: { qty: round3(used.qty), cost: round2(used.cost) },
+      wasted: { qty: round3(wasted.qty), cost: round2(wasted.cost) },
+      adjusted: { qty: round3(adjustQty) },
+    },
+    perIngredient: perIngredient.map((r) => ({ ...r, in: round3(r.in), used: round3(r.used), wasted: round3(r.wasted), close: round3(r.close) })),
+    ingredients: ingList,
+  };
 }
 
 type Move = { type: StockMoveType; ref?: string; note?: string };
@@ -589,13 +699,20 @@ export function adminOp(op: string, a: Args) {
     switch (op) {
       /* ---------- settings ---------- */
       case "settings.update": {
-        const url = str(a.publicUrl, 200).replace(/\/+$/, "");
-        if (url && !/^https?:\/\/[^\s/]+/i.test(url)) throw new ApiError("Public URL should start with http:// or https://");
-        const name = str(a.shopName, 60);
-        await tx
-          .update(settings)
-          .set(name ? { publicUrl: url, shopName: name } : { publicUrl: url })
-          .where(eq(settings.id, 1));
+        const patch: Record<string, unknown> = {};
+        if (a.publicUrl !== undefined) {
+          const url = str(a.publicUrl, 200).replace(/\/+$/, "");
+          if (url && !/^https?:\/\/[^\s/]+/i.test(url)) throw new ApiError("Public URL should start with http:// or https://");
+          patch.publicUrl = url;
+        }
+        if (a.shopName !== undefined) {
+          const name = str(a.shopName, 60);
+          if (name) patch.shopName = name;
+        }
+        if (a.walkInsOnly !== undefined) patch.walkInsOnly = a.walkInsOnly === true;
+        if (a.kotEnabled !== undefined) patch.kotEnabled = a.kotEnabled === true;
+        if (a.orderingEnabled !== undefined) patch.orderingEnabled = a.orderingEnabled === true;
+        if (Object.keys(patch).length) await tx.update(settings).set(patch).where(eq(settings.id, 1));
         return null;
       }
 
@@ -711,6 +828,165 @@ export function adminOp(op: string, a: Args) {
         const p = await must(tx.select().from(products).where(eq(products.id, id)), "Product");
         const [u] = await tx.update(products).set({ active: !p.active, updatedAt: now }).where(eq(products.id, p.id)).returning();
         return u;
+      }
+
+      /* ---------- raw ingredients (sugar, milk, flour…) ---------- */
+      case "ingredient.save": {
+        const name = str(a.name, 80);
+        const unit: IngredientUnit = a.unit === "ml" ? "ml" : "g";
+        const lowAt = Math.max(0, num(a.lowAt) || 0);
+        if (!name) throw new ApiError("Give the ingredient a name.");
+        /* The unique index is case-insensitive and covers inactive rows too, so an
+           ingredient that was removed earlier still blocks the name. On an add that
+           hits a soft-deleted row we revive it (keeping its ledger history); on one
+           that hits an active row we tell the user the name is taken. */
+        const existing = await first(tx.select().from(ingredients).where(sql`lower(${ingredients.name}) = lower(${name})`));
+        if (id) {
+          await must(tx.select().from(ingredients).where(eq(ingredients.id, id)), "Ingredient");
+          if (existing && existing.id !== id) throw new ApiError(`Another ingredient is already called "${existing.name}".`);
+          const [u] = await tx.update(ingredients).set({ name, unit, lowAt, updatedAt: now }).where(eq(ingredients.id, id)).returning();
+          return u;
+        }
+        if (existing && existing.active) throw new ApiError(`"${existing.name}" is already on the list.`);
+        if (existing) {
+          const [u] = await tx.update(ingredients).set({ name, unit, lowAt, active: true, updatedAt: now }).where(eq(ingredients.id, existing.id)).returning();
+          return u;
+        }
+        const [u] = await tx
+          .insert(ingredients)
+          .values({ id: uid(), name, unit, stock: 0, costPerUnit: 0, lowAt, active: true, createdAt: now, updatedAt: now })
+          .returning();
+        return u;
+      }
+      case "ingredient.delete": {
+        await must(tx.select().from(ingredients).where(eq(ingredients.id, id)), "Ingredient");
+        /* The ledger stays — rows carry their own ingredientName — but the active flag
+           hides the ingredient from the add/batch pickers. */
+        const [u] = await tx.update(ingredients).set({ active: false, updatedAt: now }).where(eq(ingredients.id, id)).returning();
+        return u;
+      }
+      case "ingredient.purchase": {
+        /* Buy more of the ingredient: adds to stock and updates the running
+           weighted-average cost per unit. qty is in the ingredient's own unit (g/ml),
+           cost is the ₹ for the whole purchase. */
+        const ing = await must(tx.select().from(ingredients).where(and(eq(ingredients.id, id), eq(ingredients.active, true))), "Ingredient");
+        const qty = round3(num(a.qty));
+        const cost = round2(num(a.cost));
+        if (!(qty > 0)) throw new ApiError(`Enter the quantity bought (${ing.unit}).`);
+        if (!(cost >= 0)) throw new ApiError("Enter a valid cost.");
+        const newStock = round3(ing.stock + qty);
+        const newCost = round6((ing.stock * ing.costPerUnit + cost) / Math.max(newStock, 1e-6));
+        const [u] = await tx.update(ingredients).set({ stock: newStock, costPerUnit: newCost, updatedAt: now }).where(eq(ingredients.id, ing.id)).returning();
+        await tx.insert(ingredientMoves).values({
+          id: uid(), ingredientId: ing.id, ingredientName: ing.name, unit: ing.unit,
+          qty, type: "purchase", cost, balanceAfter: newStock, batchId: null,
+          note: str(a.note, 200) || `Bought ${qty}${ing.unit} at ₹${cost}`, createdAt: now,
+        });
+        return u;
+      }
+      case "ingredient.waste": {
+        /* Mark an ingredient as discarded — comes out of stock, costed at the current per-unit price. */
+        const ing = await must(tx.select().from(ingredients).where(and(eq(ingredients.id, id), eq(ingredients.active, true))), "Ingredient");
+        const qty = round3(num(a.qty));
+        if (!(qty > 0)) throw new ApiError(`Enter the quantity wasted (${ing.unit}).`);
+        if (qty > ing.stock + 1e-6) throw new ApiError(`Only ${fmtQty(ing.stock)}${ing.unit} of ${ing.name} on hand.`);
+        const newStock = round3(ing.stock - qty);
+        const cost = round2(qty * ing.costPerUnit);
+        const [u] = await tx.update(ingredients).set({ stock: newStock, updatedAt: now }).where(eq(ingredients.id, ing.id)).returning();
+        await tx.insert(ingredientMoves).values({
+          id: uid(), ingredientId: ing.id, ingredientName: ing.name, unit: ing.unit,
+          qty: -qty, type: "waste", cost, balanceAfter: newStock, batchId: null,
+          note: str(a.note, 200) || "Wasted / discarded", createdAt: now,
+        });
+        return u;
+      }
+      case "ingredient.adjust": {
+        /* Manual stock correction (e.g. recount), kept out of waste totals. */
+        const ing = await must(tx.select().from(ingredients).where(and(eq(ingredients.id, id), eq(ingredients.active, true))), "Ingredient");
+        const target = round3(num(a.stock));
+        if (!(target >= 0)) throw new ApiError("Enter the current amount on hand.");
+        const delta = round3(target - ing.stock);
+        if (delta === 0) return ing;
+        const [u] = await tx.update(ingredients).set({ stock: target, updatedAt: now }).where(eq(ingredients.id, ing.id)).returning();
+        await tx.insert(ingredientMoves).values({
+          id: uid(), ingredientId: ing.id, ingredientName: ing.name, unit: ing.unit,
+          qty: delta, type: "adjust", cost: round2(Math.abs(delta) * ing.costPerUnit), balanceAfter: target, batchId: null,
+          note: str(a.note, 200) || "Stock corrected", createdAt: now,
+        });
+        return u;
+      }
+      case "recipe.save": {
+        /* A reusable ingredient list for a product — e.g. "Chocolate cake" with its
+           sugar / milk / flour amounts. Picking a recipe fills the batch logger, so a
+           repeat run is a one-click fill instead of a retype. */
+        const name = str(a.name, 120);
+        const note = str(a.note, 300);
+        if (!name) throw new ApiError("Give the recipe a name.");
+        const raw = Array.isArray(a.items) ? (a.items as Args[]) : [];
+        const items: RecipeItem[] = [];
+        for (const r of raw) {
+          const iid = str(r?.ingredientId, 40);
+          const qty = round3(num(r?.qty));
+          if (!iid || !(qty > 0)) continue;
+          items.push({ ingredientId: iid, qty, note: str(r?.note, 160) });
+        }
+        if (!items.length) throw new ApiError("Add at least one ingredient to the recipe.");
+        const existing = await first(tx.select().from(recipes).where(sql`lower(${recipes.name}) = lower(${name})`));
+        if (id) {
+          await must(tx.select().from(recipes).where(eq(recipes.id, id)), "Recipe");
+          if (existing && existing.id !== id) throw new ApiError(`Another recipe is already called "${existing.name}".`);
+          const [u] = await tx.update(recipes).set({ name, note, items, updatedAt: now }).where(eq(recipes.id, id)).returning();
+          return u;
+        }
+        if (existing) {
+          /* Resaving a known name overwrites it — the user just edited the quantities
+             and hit Save again, so they don't want two "Chocolate cake" recipes. */
+          const [u] = await tx.update(recipes).set({ name, note, items, updatedAt: now }).where(eq(recipes.id, existing.id)).returning();
+          return u;
+        }
+        const [u] = await tx.insert(recipes).values({ id: uid(), name, note, items, createdAt: now, updatedAt: now }).returning();
+        return u;
+      }
+      case "recipe.delete": {
+        await must(tx.select().from(recipes).where(eq(recipes.id, id)), "Recipe");
+        await tx.delete(recipes).where(eq(recipes.id, id));
+        return null;
+      }
+      case "batch.save": {
+        /* One production run: name + a list of {ingredientId, qty, note}. All lines
+           are checked against current stock first — a batch either books in full or not at all. */
+        const name = str(a.name, 120);
+        const note = str(a.note, 300);
+        if (!name) throw new ApiError("Give the batch a name (e.g. \"Chocolate cake × 2\").");
+        const raw = Array.isArray(a.uses) ? (a.uses as Args[]) : [];
+        if (!raw.length) throw new ApiError("Add at least one ingredient to the batch.");
+        const want: { ing: Ingredient; qty: number; note: string }[] = [];
+        for (const r of raw) {
+          const iid = str(r?.ingredientId, 40);
+          const q = round3(num(r?.qty));
+          if (!iid || !(q > 0)) continue;
+          const ing = await must(tx.select().from(ingredients).where(and(eq(ingredients.id, iid), eq(ingredients.active, true))), "Ingredient");
+          if (q > ing.stock + 1e-6) throw new ApiError(`Only ${fmtQty(ing.stock)}${ing.unit} of ${ing.name} on hand — asked for ${fmtQty(q)}${ing.unit}.`);
+          want.push({ ing, qty: q, note: str(r?.note, 160) });
+        }
+        if (!want.length) throw new ApiError("Add at least one ingredient to the batch.");
+        let totalCost = 0;
+        for (const w of want) totalCost = round2(totalCost + w.qty * w.ing.costPerUnit);
+        const [b] = await tx.insert(batches).values({ id: uid(), name, note, totalCost, createdAt: now }).returning();
+        for (const w of want) {
+          const newStock = round3(w.ing.stock - w.qty);
+          const cost = round2(w.qty * w.ing.costPerUnit);
+          await tx.update(ingredients).set({ stock: newStock, updatedAt: now }).where(eq(ingredients.id, w.ing.id));
+          await tx.insert(ingredientMoves).values({
+            id: uid(), ingredientId: w.ing.id, ingredientName: w.ing.name, unit: w.ing.unit,
+            qty: -w.qty, type: "use", cost, balanceAfter: newStock, batchId: b.id,
+            note: w.note || `Used in ${name}`, createdAt: now,
+          });
+          /* Keep the ingredient's cached stock in sync for the next loop iteration
+             in case the same ingredient appears twice in the batch. */
+          w.ing.stock = newStock;
+        }
+        return b;
       }
 
       /* ---------- coupons ---------- */

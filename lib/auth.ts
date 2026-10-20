@@ -1,26 +1,28 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 
-/* Admin sign-in — one password for the owner.
-
-   ADMIN_PASSWORD and AUTH_SECRET come from the environment (Vercel project
-   settings in production, .env.local locally). The session cookie is an
-   HMAC-signed expiry keyed by AUTH_SECRET, so it verifies on every serverless
-   instance. In production both are required; in development they fall back to
-   throwaway defaults so `npm run dev` works out of the box. */
+/* Role-aware sign-in — the owner (admin) and the day staff (staff).
+   Passwords come from the environment (Vercel project settings in prod,
+   .env.local locally). The session cookie is `role.exp.sig`, where the HMAC is
+   keyed by AUTH_SECRET and signs `role.exp`, so it verifies on every serverless
+   instance and a staff token can't be edited into an admin one. */
 
 export const COOKIE = "clc_admin";
 const TTL = 1000 * 60 * 60 * 24 * 14; // two weeks
 
+export type Role = "admin" | "staff";
+export const ROLES: Role[] = ["admin", "staff"];
+
 const prod = process.env.NODE_ENV === "production";
-const need = (name: string, dev: string) => {
+const need = (name: string, dev: string, requireInProd = true) => {
   const v = process.env[name];
   if (v) return v;
-  if (prod && process.env.NEXT_PHASE !== "phase-production-build") throw new Error(`${name} must be set in production.`);
+  if (requireInProd && prod && process.env.NEXT_PHASE !== "phase-production-build") throw new Error(`${name} must be set in production.`);
   return dev;
 };
 
 const ADMIN_PW = need("ADMIN_PASSWORD", "admin123");
+const STAFF_PW = need("STAFF_PASSWORD", "staff123", false);
 const SECRET = need("AUTH_SECRET", "dev-only-secret");
 
 /* Kept for the Users page, which still stores a per-staff password hash. */
@@ -35,26 +37,67 @@ function eq(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export function checkPassword(pw: string) {
-  return eq(pw, ADMIN_PW);
+export function passwordForRole(role: Role): string {
+  return role === "staff" ? STAFF_PW : ADMIN_PW;
 }
 
-const sign = (exp: number) => createHmac("sha256", SECRET).update(String(exp)).digest("base64url");
+export function checkPassword(pw: string, role: Role = "admin") {
+  return eq(pw, passwordForRole(role));
+}
 
-export function makeToken() {
+const sign = (payload: string) => createHmac("sha256", SECRET).update(payload).digest("base64url");
+
+export function makeToken(role: Role = "admin") {
   const exp = Date.now() + TTL;
-  return { value: `${exp}.${sign(exp)}`, maxAge: TTL / 1000 };
+  const payload = `${role}.${exp}`;
+  return { value: `${payload}.${sign(payload)}`, maxAge: TTL / 1000 };
 }
 
-export function verifyToken(token: string | undefined) {
-  if (!token) return false;
-  const [e, sig] = token.split(".");
-  const exp = Number(e);
-  if (!exp || exp < Date.now() || !sig) return false;
-  return eq(sig, sign(exp));
+export function verifyToken(token: string | undefined): Role | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  /* new format: role.exp.sig */
+  if (parts.length === 3) {
+    const [role, e, sig] = parts;
+    if (role !== "admin" && role !== "staff") return null;
+    const exp = Number(e);
+    if (!exp || exp < Date.now() || !sig) return null;
+    return eq(sig, sign(`${role}.${exp}`)) ? (role as Role) : null;
+  }
+  /* legacy format: exp.sig — treated as an admin session, so pre-upgrade
+     cookies keep working until they expire. */
+  if (parts.length === 2) {
+    const [e, sig] = parts;
+    const exp = Number(e);
+    if (!exp || exp < Date.now() || !sig) return null;
+    return eq(sig, sign(String(exp))) ? "admin" : null;
+  }
+  return null;
 }
 
-export async function isAdmin() {
+/** The role on the current request's cookie, or null when signed out. */
+export async function getRole(): Promise<Role | null> {
   const jar = await cookies();
   return verifyToken(jar.get(COOKIE)?.value);
+}
+
+/** True when the visitor holds any valid session (admin OR staff). */
+export async function isAuthed(): Promise<boolean> {
+  return (await getRole()) !== null;
+}
+
+/** Kept for callers that only care whether the owner is signed in (admin-only pages). */
+export async function isAdmin(): Promise<boolean> {
+  return (await getRole()) === "admin";
+}
+
+/* Server-side guard for admin-only server components (analytics, coupons, …).
+   Imported dynamically so this module stays safe to import from the Edge
+   runtime, which can't bundle `next/navigation`. */
+export async function requireAdmin(fallback = "/admin"): Promise<void> {
+  const role = await getRole();
+  if (role === "admin") return;
+  const { redirect } = await import("next/navigation");
+  if (!role) redirect("/admin/login");
+  redirect(fallback);
 }

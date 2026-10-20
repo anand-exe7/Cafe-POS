@@ -1,6 +1,6 @@
 import { bigint, boolean, index, integer, jsonb, numeric, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { BillSource, CouponSource, DiscountType, OrderItem, OrderSource, OrderStatus, PayMethod, SessionStatus, StockMoveType } from "../types";
+import type { BillSource, CouponSource, DiscountType, IngredientMoveType, IngredientUnit, OrderItem, OrderSource, OrderStatus, PayMethod, SessionStatus, StockMoveType } from "../types";
 
 /* One database table per type in lib/types.ts. Ids stay the app's own short text ids and
    timestamps stay epoch milliseconds, so rows map 1:1 onto the shapes the UI
@@ -8,12 +8,23 @@ import type { BillSource, CouponSource, DiscountType, OrderItem, OrderSource, Or
 
 const ms = (name: string) => bigint(name, { mode: "number" });
 const money = (name: string) => numeric(name, { precision: 12, scale: 2, mode: "number" });
+/** Ingredient quantities are measured in grams or millilitres — three decimals is enough for a pinch. */
+const amount = (name: string) => numeric(name, { precision: 14, scale: 3, mode: "number" });
+/** Per-unit cost (₹ / g or ₹ / ml) stays accurate even for cheap bulk goods. */
+const unitCost = (name: string) => numeric(name, { precision: 14, scale: 6, mode: "number" });
 
 /** Single row (id = 1). */
 export const settings = pgTable("settings", {
   id: integer("id").primaryKey().default(1),
   shopName: text("shop_name").notNull(),
   publicUrl: text("public_url").notNull().default(""),
+  /** Hide the "Customer tab" flow in POS Billing — the shop only takes walk-ins. */
+  walkInsOnly: boolean("walk_ins_only").notNull().default(false),
+  /** On-screen kitchen ticket queue (KOT) — when false the Kitchen page and nav hide. */
+  kotEnabled: boolean("kot_enabled").notNull().default(true),
+  /** When false the customer-facing site is menu-only: no cart, no tabs, no "send to kitchen".
+      Admin's "Open tabs" and the Billing "Customer tab" mode also hide. */
+  orderingEnabled: boolean("ordering_enabled").notNull().default(true),
 });
 
 /** Single row (id = 1): the change counter the admin panel polls, and the order-number sequence. */
@@ -180,6 +191,79 @@ export const expenseCategories = pgTable(
     createdAt: ms("created_at").notNull(),
   },
   (t) => [uniqueIndex("expense_categories_name_uq").on(sql`lower(${t.name})`)],
+);
+
+/* ---------------- Raw-ingredient inventory ----------------
+   The shop buys sugar, milk, flour by the gram or millilitre. Each ingredient
+   keeps a running stock and a weighted-average per-unit cost (so adding a new
+   batch of sugar at a different price updates the cost per gram smoothly).
+   Every movement — purchase, batch use, waste or adjustment — is journalled
+   so the ledger below can filter, sum and export to Excel. */
+export const ingredients = pgTable(
+  "ingredients",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    unit: text("unit").$type<IngredientUnit>().notNull(),
+    stock: amount("stock").notNull().default(0),
+    costPerUnit: unitCost("cost_per_unit").notNull().default(0),
+    lowAt: amount("low_at").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    createdAt: ms("created_at").notNull(),
+    updatedAt: ms("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("ingredients_name_uq").on(sql`lower(${t.name})`)],
+);
+
+/** A reusable list of ingredients for a product — "Chocolate cake" with its sugar,
+    milk and flour amounts — so logging a repeat batch is a one-click fill of the
+    batch form, not a retype. The items array keeps the ingredient id, qty and an
+    optional per-line note; qty is in each ingredient's own unit. */
+export const recipes = pgTable(
+  "recipes",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    note: text("note").notNull().default(""),
+    items: jsonb("items").$type<{ ingredientId: string; qty: number; note: string }[]>().notNull().default([]),
+    createdAt: ms("created_at").notNull(),
+    updatedAt: ms("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("recipes_name_uq").on(sql`lower(${t.name})`)],
+);
+
+/** One production run — "Chocolate cake × 2" — groups the uses that fed it. */
+export const batches = pgTable(
+  "batches",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    note: text("note").notNull().default(""),
+    totalCost: money("total_cost").notNull().default(0),
+    createdAt: ms("created_at").notNull(),
+  },
+  (t) => [index("batches_created_idx").on(t.createdAt)],
+);
+
+/** Every change to an ingredient's stock, newest last — a purchase adds, a
+    batch use or waste removes. `cost` is the ₹ value of this line (positive). */
+export const ingredientMoves = pgTable(
+  "ingredient_moves",
+  {
+    id: text("id").primaryKey(),
+    ingredientId: text("ingredient_id").notNull(),
+    ingredientName: text("ingredient_name").notNull(),
+    unit: text("unit").$type<IngredientUnit>().notNull(),
+    /** signed: + into stock, − out of it */
+    qty: amount("qty").notNull(),
+    type: text("type").$type<IngredientMoveType>().notNull(),
+    cost: money("cost").notNull().default(0),
+    balanceAfter: amount("balance_after").notNull(),
+    batchId: text("batch_id"),
+    note: text("note").notNull().default(""),
+    createdAt: ms("created_at").notNull(),
+  },
+  (t) => [index("ingredient_moves_created_idx").on(t.createdAt), index("ingredient_moves_ing_idx").on(t.ingredientId), index("ingredient_moves_batch_idx").on(t.batchId)],
 );
 
 /** Every change to a product's tracked stock, newest last. */
