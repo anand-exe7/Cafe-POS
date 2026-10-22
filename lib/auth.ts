@@ -13,17 +13,16 @@ const TTL = 1000 * 60 * 60 * 24 * 14; // two weeks
 export type Role = "admin" | "staff";
 export const ROLES: Role[] = ["admin", "staff"];
 
-const prod = process.env.NODE_ENV === "production";
-const need = (name: string, dev: string, requireInProd = true) => {
+const need = (name: string, required = true) => {
   const v = process.env[name];
   if (v) return v;
-  if (requireInProd && prod && process.env.NEXT_PHASE !== "phase-production-build") throw new Error(`${name} must be set in production.`);
-  return dev;
+  if (required && process.env.NEXT_PHASE !== "phase-production-build") throw new Error(`${name} must be set. Add it to .env.local (and to Vercel in production).`);
+  return "";
 };
 
-const ADMIN_PW = need("ADMIN_PASSWORD", "admin123");
-const STAFF_PW = need("STAFF_PASSWORD", "staff123", false);
-const SECRET = need("AUTH_SECRET", "dev-only-secret");
+const ADMIN_PW = need("ADMIN_PASSWORD");
+const STAFF_PW = need("STAFF_PASSWORD", false);
+const SECRET = need("AUTH_SECRET");
 
 /* Kept for the Users page, which still stores a per-staff password hash. */
 export function hashPassword(pw: string) {

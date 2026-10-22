@@ -200,8 +200,8 @@ export default function BillingPage({ sessionId }: { sessionId?: string }) {
           <div className="flex rounded-2xl bg-slate-100 p-1">
             {(
               [
-                ["tab", "Customer tab", "bg-red-500"],
                 ["counter", "Counter (walk-in)", "bg-emerald-500"],
+                ["tab", "Customer tab", "bg-red-500"],
               ] as const
             ).map(([m, t, dot]) => (
               <button

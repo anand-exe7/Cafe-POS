@@ -16,6 +16,7 @@ const NAV: Nav[] = [
   { href: "/admin/analytics", label: "Analytics", icon: "chart", roles: ["admin"] },
   { href: "/admin", label: "Open tabs", icon: "tables", roles: ["admin", "staff"], hideWhen: (s) => s.walkInsOnly || !s.orderingEnabled },
   { href: "/admin/kitchen", label: "Kitchen (KOT)", icon: "kitchen", roles: ["admin", "staff"], requiresKot: true },
+  { href: "/admin/queue", label: "Live queue", icon: "zap", roles: ["admin", "staff"], hideWhen: (s) => s.walkInsOnly || !s.orderingEnabled },
   { href: "/admin/inventory", label: "Inventory", icon: "box", roles: ["admin", "staff"] },
   { href: "/admin/inventory/ingredients", label: "Ingredients & waste", icon: "orders", roles: ["admin", "staff"] },
   { href: "/admin/inventory/ingredient-moves", label: "Ingredient log", icon: "list", roles: ["admin", "staff"] },
@@ -163,7 +164,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           </span>
         )}
       </Link>
-      <nav className="flex-1 space-y-1 px-3" aria-label="Admin">
+      <nav className="adm-side__scroll min-h-0 flex-1 space-y-1 overflow-y-auto px-3" aria-label="Admin">
         {nav.map((n) => {
           const on = active(n.href);
           return (
