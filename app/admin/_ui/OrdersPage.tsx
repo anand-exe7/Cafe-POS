@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Bill } from "@/lib/types";
 import { rupee } from "@/lib/money";
 import { inRange, rangeOf, type Period } from "@/lib/analytics";
 import { useAdmin } from "./Store";
 import { billText, waLink } from "./receipt";
 import PrintModal from "./PrintModal";
-import { Badge, Btn, Empty, Icon, Modal, Page, PageHead, SearchBox, WaIcon, csv, cx, downloadExcel, downloadText, fmtDate, fmtDateTime, fmtTime } from "./kit";
+import { Badge, Btn, Empty, Icon, Modal, Page, PageHead, SearchBox, WaIcon, cx, downloadExcel, fmtDate, fmtDateTime, fmtTime } from "./kit";
 
 type DateF = Extract<Period, "today" | "week" | "month" | "custom"> | "any";
 
@@ -42,7 +42,8 @@ export default function OrdersPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [q, setQ] = useState("");
-  const [limit, setLimit] = useState(50);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
   const [bill, setBill] = useState<Bill | null>(null);
   const [printFor, setPrintFor] = useState<Bill | null>(null);
 
@@ -69,16 +70,23 @@ export default function OrdersPage() {
     [s.bills, type, range, needle],
   );
 
-  /* The bills on screen as a CSV, which Excel opens with real columns. */
+  /* Any filter change starts the list again from page 1 (otherwise an invisible
+     page number carries over to a shorter result set). */
+  useEffect(() => { setPage(1); }, [type, date, from, to, needle]);
+
+  /* The bills on screen as an Excel workbook with real columns. */
   const exportRows = (): (string | number)[][] => [
-    ["Invoice", "Type", "Customer", "Phone", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Bill type", "GST %", "Taxable amount", "GST amount", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
+    ["Invoice", "Type", "Customer", "Mobile", "Items", "Subtotal", "Coupon", "Coupon discount", "Manual discount", "Extra", "Bill type", "GST %", "Taxable amount", "GST amount", "Total", "Payment", "Cash", "UPI", "Card", "Status", "Date", "Time"],
     ...bills.map((b) => [b.invoiceNo, b.source, b.customerName, b.customerPhone, b.itemCount, b.subtotal, b.couponCode ?? "", b.couponDiscount, b.manualDiscount, b.extra, b.isGst ? "GST" : "Non-GST", b.gstPercent, b.taxableAmount, b.gstAmount, b.total, b.payment, b.cashAmount, b.upiAmount, b.cardAmount, b.status, fmtDate(b.createdAt), fmtTime(b.createdAt)]),
   ];
   const stamp = () => new Date().toISOString().slice(0, 10);
-  const exportCsv = () => downloadText(`bills-${stamp()}.csv`, csv(exportRows()));
-  const exportExcel = () => downloadExcel(`bills-${stamp()}`, [{ name: "Bills", rows: exportRows() }]);
+  const exportExcel = () => downloadExcel(`bills-${stamp()}.xlsx`, [{ name: "Bills", rows: exportRows() }]);
 
   const count = bills.length;
+  const pages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+  const safePage = Math.min(page, pages);
+  const slice = bills.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const goto = (p: number) => setPage(Math.max(1, Math.min(pages, p)));
 
   return (
     <Page>
@@ -135,19 +143,14 @@ export default function OrdersPage() {
             )}
           </div>
         </div>
-        <SearchBox value={q} onChange={setQ} placeholder="Search invoice, name, phone, item…" className="w-full lg:w-80" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search invoice, name, mobile, item…" className="w-full lg:w-80" />
       </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
         <span className="text-[12.5px] font-semibold text-slate-600">{count} result(s)</span>
-        <div className="flex items-center gap-4">
-          <button type="button" onClick={exportExcel} disabled={!count} className="inline-flex items-center gap-1.5 text-[13px] font-bold text-emerald-700 hover:underline disabled:opacity-40">
-            <Icon name="download" size={15} /> Export Excel
-          </button>
-          <button type="button" onClick={exportCsv} disabled={!count} className="inline-flex items-center gap-1.5 text-[13px] font-bold text-red-600 hover:underline disabled:opacity-40">
-            <Icon name="download" size={15} /> Export CSV
-          </button>
-        </div>
+        <button type="button" onClick={exportExcel} disabled={!count} className="inline-flex items-center gap-1.5 text-[13px] font-bold text-emerald-700 hover:underline disabled:opacity-40">
+          <Icon name="download" size={15} /> Export Excel
+        </button>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,.08)]">
@@ -157,6 +160,7 @@ export default function OrdersPage() {
                 <tr className="border-b border-slate-100">
                   <th className={th}>Invoice no</th>
                   <th className={th}>Customer name</th>
+                  <th className={th}>Mobile</th>
                   <th className={th}>Bill type</th>
                   <th className={th}>Total</th>
                   <th className={th}>Payment</th>
@@ -166,7 +170,7 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {bills.slice(0, limit).map((b) => (
+                {slice.map((b) => (
                   <tr key={b.id} className={cx("border-b border-slate-100 transition-colors hover:bg-slate-50/60", b.status === "void" && "opacity-55")}>
                     <td className={td}>
                       <button type="button" onClick={() => setBill(b)} className="inline-flex items-center gap-2 font-bold text-red-600">
@@ -177,6 +181,7 @@ export default function OrdersPage() {
                       </button>
                     </td>
                     <td className={cx(td, "font-semibold text-slate-800")}>{b.customerName || "—"}</td>
+                    <td className={cx(td, "adm-num text-slate-600")}>{b.customerPhone || <span className="text-slate-400">—</span>}</td>
                     <td className={td}>{b.source === "tab" ? <Badge tone="orange">Customer tab</Badge> : <Badge tone="sky">Counter</Badge>}</td>
                     <td className={cx(td, "font-bold text-slate-900")}>{rupee(b.total)}</td>
                     <td className={cx(td, "text-slate-600")}>{PAY[b.payment]}</td>
@@ -211,9 +216,16 @@ export default function OrdersPage() {
           )}
         </div>
       </div>
-      {count > limit && (
-        <div className="mt-4 text-center">
-          <Btn onClick={() => setLimit((n) => n + 50)}>Show more ({count - limit} left)</Btn>
+      {pages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[13px] text-slate-500">
+          <span>
+            {(safePage - 1) * PAGE_SIZE + 1}–{(safePage - 1) * PAGE_SIZE + slice.length} of {count}
+          </span>
+          <span className="flex items-center gap-2">
+            <button type="button" disabled={safePage <= 1} onClick={() => goto(safePage - 1)} className="h-9 rounded-xl bg-slate-100 px-4 font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-40">← Prev</button>
+            <span className="min-w-[96px] text-center font-semibold text-slate-700">Page {safePage} of {pages}</span>
+            <button type="button" disabled={safePage >= pages} onClick={() => goto(safePage + 1)} className="h-9 rounded-xl bg-slate-100 px-4 font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-40">Next →</button>
+          </span>
         </div>
       )}
 

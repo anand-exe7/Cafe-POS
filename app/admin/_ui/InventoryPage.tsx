@@ -1,10 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { AdminState, Product } from "@/lib/types";
 import { rupee } from "@/lib/money";
 import { useAdmin } from "./Store";
 import { Badge, Btn, Empty, Field, Icon, Kpi, Modal, Page, PageHead, SearchBox, Switch, cx, inputCls } from "./kit";
+
+const IMAGE_MAX_BYTES = 4 * 1024 * 1024; // 4 MB per image, as agreed with the client.
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const fileToDataUrl = (f: File) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error("read failed"));
+    r.onload = () => resolve(String(r.result ?? ""));
+    r.readAsDataURL(f);
+  });
 
 type Form = {
   id?: string;
@@ -84,6 +94,63 @@ function StockValueBreakdown({ products }: { products: Product[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/* Image chooser: one photo per product. Takes a file (up to 4 MB) and stores it
+   as a base64 data URL on the product, or accepts a pasted link. The × button
+   clears it. Everything stays on `form.image`, which both the form preview and
+   the catalog already know how to render. */
+function ImageField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { toast } = useAdmin();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const pickFile = async (f: File | null | undefined) => {
+    if (!f) return;
+    if (!IMAGE_TYPES.includes(f.type)) {
+      toast({ kind: "err", title: "That file type is not supported.", body: "Use JPEG, PNG, WebP or GIF." });
+      return;
+    }
+    if (f.size > IMAGE_MAX_BYTES) {
+      toast({ kind: "err", title: "That image is too big.", body: `Keep it under 4 MB — this one is ${(f.size / 1024 / 1024).toFixed(1)} MB.` });
+      return;
+    }
+    setBusy(true);
+    try {
+      onChange(await fileToDataUrl(f));
+    } catch {
+      toast({ kind: "err", title: "Couldn't read that image." });
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = ""; // let the same file be picked again after delete
+    }
+  };
+
+  const uploaded = value.startsWith("data:");
+
+  return (
+    <div className="space-y-2">
+      <input ref={fileRef} type="file" accept={IMAGE_TYPES.join(",")} className="hidden" onChange={(e) => pickFile(e.target.files?.[0])} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Btn size="sm" kind="soft" icon="download" onClick={() => fileRef.current?.click()} disabled={busy}>
+          {busy ? "Reading…" : value ? "Replace image" : "Upload image"}
+        </Btn>
+        {value && (
+          <Btn size="sm" kind="red" icon="trash" onClick={() => onChange("")}>
+            Remove
+          </Btn>
+        )}
+        <span className="text-[11.5px] text-slate-400">One image · up to 4 MB</span>
+      </div>
+      <input
+        className={inputCls}
+        value={uploaded ? "" : value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={uploaded ? "Uploaded image in use — clear it to paste a link" : "or paste an image URL (https://…)"}
+        disabled={uploaded}
+      />
+    </div>
   );
 }
 
@@ -290,15 +357,30 @@ export default function InventoryPage() {
       </div>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="adm-scroll flex gap-2 overflow-x-auto pb-1">
-          {["All", ...cats].map((c) => (
-            <button key={c} type="button" onClick={() => setCat(c)} className={cx("h-9 shrink-0 rounded-full px-4 text-[12.5px] font-semibold transition", cat === c ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>
-              {c}
-            </button>
-          ))}
+        <div className="adm-scroll flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
+          {["All", ...cats].map((c) => {
+            const n = c === "All" ? s.products.length : s.products.filter((p) => p.category === c).length;
+            const on = cat === c;
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setCat(c)}
+                className={cx(
+                  "inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-4 text-[12.5px] font-semibold transition",
+                  on
+                    ? "border-slate-900 bg-slate-900 text-white shadow-[0_4px_14px_-6px_rgba(15,23,42,.6)]"
+                    : "border-transparent bg-slate-100 text-slate-600 hover:border-slate-200 hover:bg-slate-50",
+                )}
+              >
+                <span className="truncate">{c}</span>
+                <span className={cx("adm-num rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums", on ? "bg-white/15 text-white/90" : "bg-white text-slate-500")}>{n}</span>
+              </button>
+            );
+          })}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select className="h-11 rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 outline-none" value={filter} onChange={(e) => setFilter(e.target.value as StockFilter)} aria-label="Filter">
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
+          <select className="h-11 rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 outline-none focus:border-slate-400" value={filter} onChange={(e) => setFilter(e.target.value as StockFilter)} aria-label="Filter">
             <option value="all">All products</option>
             <option value="menu">On the menu</option>
             <option value="hidden">Hidden</option>
@@ -537,8 +619,8 @@ export default function InventoryPage() {
               <Field label="Description" className="sm:col-span-2">
                 <textarea className={cx(inputCls, "h-20 resize-none py-3")} maxLength={240} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="One line that makes it irresistible." />
               </Field>
-              <Field label="Image URL" className="sm:col-span-2" hint="Paste a link to a photo (square works best).">
-                <input className={inputCls} value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://…" />
+              <Field label="Image" className="sm:col-span-2" hint="Upload one photo (JPEG, PNG, WebP or GIF, up to 4 MB) or paste a link.">
+                <ImageField value={form.image} onChange={(v) => setForm({ ...form, image: v })} />
               </Field>
             </div>
             <div className="space-y-4">

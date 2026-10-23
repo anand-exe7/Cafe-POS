@@ -217,6 +217,8 @@ export type IngredientMove = {
   cost: number;
   balanceAfter: number;
   batchId: string | null;
+  /** Human-readable name of the batch this line came from, when a batch produced it. */
+  batchName: string;
   note: string;
   createdAt: number;
 };

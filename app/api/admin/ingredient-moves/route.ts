@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       unit: r.unit,
       cost: r.cost,
       balance: r.balanceAfter,
-      batch: r.batchId ?? "",
+      batch: r.batchName || "",
       note: r.note,
     });
   }

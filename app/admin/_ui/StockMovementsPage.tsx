@@ -6,7 +6,7 @@ import type { StockLedger, StockMoveType } from "@/lib/types";
 import { rangeOf, type Period } from "@/lib/analytics";
 import { useLedger } from "./ledger";
 import { useAdmin } from "./Store";
-import { Badge, Btn, Card, DateRange, Empty, Kpi, Page, PageHead, Pills, SearchBox, csv, cx, downloadText, fmtDate, fmtDateTime, fmtTime, type BadgeTone } from "./kit";
+import { Badge, Btn, Card, DateRange, Empty, Kpi, Page, PageHead, Pills, SearchBox, cx, downloadExcel, fmtDate, fmtDateTime, fmtTime, type BadgeTone } from "./kit";
 
 const TYPE: Record<StockMoveType, [string, BadgeTone]> = {
   initial: ["Opening", "slate"],
@@ -49,8 +49,8 @@ export default function StockMovementsPage() {
   /* any filter change starts again from the first page */
   const filter = <T,>(set: (v: T) => void) => (v: T) => (set(v), setPage(1));
 
-  /* Every movement that matches the filters on screen — not just this page — as a CSV. */
-  const exportCsv = async () => {
+  /* Every movement that matches the filters on screen — not just this page — as an Excel workbook. */
+  const exportExcel = async () => {
     setExporting(true);
     try {
       const p = new URLSearchParams({ export: "1", size: "5000" });
@@ -65,7 +65,7 @@ export default function StockMovementsPage() {
       if (!d.rows.length) return toast({ kind: "info", title: "Nothing to download", body: "No stock movements match these filters." });
       const head = ["Date", "Time", "Product", "Type", "Change", "Balance after", "Reason", "Reference"];
       const body = d.rows.map((m) => [fmtDate(m.createdAt), fmtTime(m.createdAt), m.productName, TYPE[m.type][0], m.qty, m.balanceAfter, m.note, m.ref]);
-      downloadText(`stock-movement-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...body]));
+      downloadExcel(`stock-movement-${new Date().toISOString().slice(0, 10)}.xlsx`, [{ name: "Stock movement", rows: [head, ...body] }]);
       toast({ kind: "ok", title: `Downloaded ${d.rows.length} movement${d.rows.length === 1 ? "" : "s"}`, body: d.total > d.rows.length ? `Latest ${d.rows.length} of ${d.total} — narrow the dates to get the rest.` : undefined });
     } catch {
       toast({ kind: "err", title: "Couldn't prepare the download. Please try again." });
@@ -81,8 +81,8 @@ export default function StockMovementsPage() {
         sub="Every addition, sale, return and correction to tracked stock. History starts from when this feature went live."
         right={
           <>
-            <Btn icon="download" className="h-10" disabled={exporting || !data?.total} onClick={exportCsv}>
-              {exporting ? "Preparing…" : "Download CSV"}
+            <Btn icon="download" className="h-10" disabled={exporting || !data?.total} onClick={exportExcel}>
+              {exporting ? "Preparing…" : "Download Excel"}
             </Btn>
             <Link href="/admin/inventory" className="inline-flex h-10 items-center rounded-xl bg-slate-100 px-4 text-[13px] font-semibold text-slate-700 hover:bg-slate-200">
               ← Inventory
