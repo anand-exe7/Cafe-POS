@@ -7,7 +7,7 @@ import { completedIn, customerStats, expensesIn, gstReport, isoWeek, itemStats, 
 import Link from "next/link";
 import { useAdmin } from "./Store";
 import { useLedger } from "./ledger";
-import { Badge, Btn, Card, DateRange, Empty, Kpi, Page, PageHead, Pills, SearchBox, Switch, Tabs, csv, cx, downloadExcel, downloadText, fmtDate, fmtTime, type ExcelSheet } from "./kit";
+import { Badge, Btn, Card, DateRange, Empty, Kpi, Page, PageHead, Pills, SearchBox, Switch, Tabs, cx, downloadExcel, fmtDate, fmtTime, type ExcelSheet } from "./kit";
 
 type Tab = "revenue" | "today" | "products" | "customers" | "coupons";
 
@@ -145,7 +145,7 @@ function GstByRate({ rates }: { rates: { rate: number; invoices: number; taxable
   );
 }
 
-/** Invoice-by-invoice GST — the list an accountant files from. Shows the latest few, the CSV has them all. */
+/** Invoice-by-invoice GST — the list an accountant files from. Shows the latest few, the Excel export has them all. */
 function GstRegister({ bills, onExport }: { bills: Bill[]; onExport: () => void }) {
   const [all, setAll] = useState(false);
   const rows = all ? bills : bills.slice(0, 12);
@@ -155,7 +155,7 @@ function GstRegister({ bills, onExport }: { bills: Bill[]; onExport: () => void 
       title="GST invoices"
       right={
         <Btn size="sm" icon="download" onClick={onExport} disabled={!bills.length}>
-          Download CSV
+          Download Excel
         </Btn>
       }
     >
@@ -271,12 +271,12 @@ export default function AnalyticsPage() {
   const net = sum.revenue - sum.gst - expensesTotal;
   const gstBills = useMemo(() => inPeriod.filter((b) => b.isGst).sort((a, b) => b.createdAt - a.createdAt), [inPeriod]);
   const exportGst = () => {
-    const head = ["Invoice", "Date", "Customer", "Phone", "GST %", "Taxable amount", "CGST", "SGST", "Total GST", "Invoice total"];
+    const head = ["Invoice", "Date", "Customer", "Mobile", "GST %", "Taxable amount", "CGST", "SGST", "Total GST", "Invoice total"];
     const body = gstBills.map((b) => {
       const h = splitGst(b.gstAmount);
       return [b.invoiceNo, fmtDate(b.createdAt), b.customerName, b.customerPhone, b.gstPercent, b.taxableAmount, h.cgst, h.sgst, b.gstAmount, b.total];
     });
-    downloadText(`gst-invoices-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...body]));
+    downloadExcel(`gst-invoices-${new Date().toISOString().slice(0, 10)}.xlsx`, [{ name: "GST invoices", rows: [head, ...body] }]);
   };
   const { data: ledger } = useLedger({ from: range?.from, to: range?.to, size: 1 });
   const stock = ledger?.stats ?? { added: 0, sold: 0, removed: 0, returned: 0, adjusted: 0, net: 0 };

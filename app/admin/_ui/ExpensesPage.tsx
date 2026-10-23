@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Expense, ExpenseCategory } from "@/lib/types";
 import { rupee, shopToday } from "@/lib/money";
 import { expenseStats, rangeOf, type Period } from "@/lib/analytics";
 import { useAdmin } from "./Store";
-import { Badge, Btn, Card, Empty, DateRange, Field, Icon, Kpi, Modal, Page, PageHead, Pills, SearchBox, cx, inputCls } from "./kit";
+import { Badge, Btn, Card, Empty, DateRange, Field, Icon, Kpi, Modal, Page, PageHead, Pills, SearchBox, cx, downloadExcel, inputCls } from "./kit";
 
 type Form = { id?: string; title: string; category: string; amount: string; paymentMode: string; notes: string; expenseDate: string };
 
@@ -29,10 +29,17 @@ export default function ExpensesPage() {
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
   const [manage, setManage] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
   const [newCat, setNewCat] = useState<string | null>(null); // inline "new category" box inside the expense form
 
   const range = useMemo(() => rangeOf(period, from, to), [period, from, to]);
   const st = useMemo(() => expenseStats(s.expenses, range, cat, q), [s.expenses, range, cat, q]);
+  /* Any filter change restarts the list at page 1. */
+  useEffect(() => { setPage(1); }, [period, from, to, cat, q]);
+  const pages = Math.max(1, Math.ceil(st.rows.length / PAGE_SIZE));
+  const safePage = Math.min(page, pages);
+  const slice = st.rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   /* the shop's own list, plus any category an older expense still carries */
   const cats = useMemo(() => Array.from(new Set([...s.expenseCategories.map((c) => c.name), ...s.expenses.map((e) => e.category)])), [s.expenseCategories, s.expenses]);
   const max = st.breakdown[0]?.amount || 1;
@@ -68,6 +75,17 @@ export default function ExpensesPage() {
     }
   };
 
+  /* Download the filtered expense log as an Excel workbook. */
+  const exportExcel = () => {
+    const head = ["Date", "Title", "Category", "Paid by", "Amount", "Notes"];
+    const body = st.rows.map((e) => [ddmmyyyy(e.expenseDate), e.title, e.category, e.paymentMode.toUpperCase(), e.amount, e.notes]);
+    const breakdown: (string | number)[][] = [["Category", "Amount", "Share"], ...st.breakdown.map((b) => [b.category, b.amount, `${Math.round((b.amount / (st.total || 1)) * 100)}%`])];
+    downloadExcel(`expenses-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      { name: "Expenses", rows: [head, ...body] },
+      { name: "By category", rows: breakdown },
+    ]);
+  };
+
   return (
     <Page>
       <PageHead
@@ -75,6 +93,9 @@ export default function ExpensesPage() {
         sub="Everything you spend. The total is subtracted from revenue in Analytics."
         right={
           <span className="flex flex-wrap gap-2">
+            <Btn icon="download" onClick={exportExcel} disabled={!st.rows.length} title={st.rows.length ? "Download the filtered log as Excel" : "No expenses to download"}>
+              Download Excel
+            </Btn>
             <Btn icon="edit" onClick={() => setManage(true)}>
               Manage categories
             </Btn>
@@ -138,7 +159,7 @@ export default function ExpensesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {st.rows.map((e) => (
+                  {slice.map((e) => (
                     <tr key={e.id} className="border-b border-slate-100 last:border-0">
                       <td className={cx(td, "whitespace-nowrap text-slate-600")}>{ddmmyyyy(e.expenseDate)}</td>
                       <td className={td}>
@@ -170,6 +191,18 @@ export default function ExpensesPage() {
                   ))}
                 </tbody>
               </table>
+              {pages > 1 && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-1 text-[12.5px] text-slate-500">
+                  <span>
+                    {(safePage - 1) * PAGE_SIZE + 1}–{(safePage - 1) * PAGE_SIZE + slice.length} of {st.rows.length}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} className="h-9 rounded-xl bg-slate-100 px-4 font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-40">← Prev</button>
+                    <span className="min-w-[96px] text-center font-semibold text-slate-700">Page {safePage} of {pages}</span>
+                    <button type="button" disabled={safePage >= pages} onClick={() => setPage(safePage + 1)} className="h-9 rounded-xl bg-slate-100 px-4 font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-40">Next →</button>
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </Card>

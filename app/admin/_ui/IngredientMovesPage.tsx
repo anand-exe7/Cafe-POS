@@ -215,7 +215,7 @@ export default function IngredientMovesPage() {
         ) : (
           <>
             <div className="overflow-x-auto rounded-xl border border-slate-100">
-              <table className="w-full min-w-[820px] text-[13px]">
+              <table className="w-full min-w-[900px] text-[13px]">
                 <thead className="bg-slate-50/60">
                   <tr>
                     <SortTh label="When" col="date" sort={sort} dir={dir} onSort={toggleSort} />
@@ -224,6 +224,7 @@ export default function IngredientMovesPage() {
                     <SortTh label="Change" col="qty" sort={sort} dir={dir} onSort={toggleSort} align="right" />
                     <SortTh label="Cost" col="cost" sort={sort} dir={dir} onSort={toggleSort} align="right" />
                     <SortTh label="Balance" col="balance" sort={sort} dir={dir} onSort={toggleSort} align="right" />
+                    <th className={th}>Batch</th>
                     <th className={th}>Note</th>
                   </tr>
                 </thead>
@@ -236,6 +237,7 @@ export default function IngredientMovesPage() {
                       <td className={cx(td, "text-right adm-num font-semibold", r.qty < 0 ? "text-red-600" : "text-emerald-700")}>{r.qty > 0 ? "+" : ""}{num3(r.qty)}{r.unit}</td>
                       <td className={cx(td, "text-right adm-num")}>{r.cost > 0 ? rupee(r.cost) : <span className="text-slate-400">—</span>}</td>
                       <td className={cx(td, "text-right adm-num")}>{num3(r.balanceAfter)}{r.unit}</td>
+                      <td className={cx(td, "font-semibold text-slate-800")}>{r.batchName || <span className="font-normal text-slate-400">—</span>}</td>
                       <td className={cx(td, "text-slate-600")}>{r.note || <span className="text-slate-400">—</span>}</td>
                     </tr>
                   ))}

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import type { Batch, Ingredient, IngredientUnit, Recipe } from "@/lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Batch, Ingredient, IngredientUnit, Product, Recipe } from "@/lib/types";
 import { rupee } from "@/lib/money";
 import { useAdmin } from "./Store";
 import { Badge, Btn, Card, Empty, Field, Icon, Kpi, Modal, Page, PageHead, SearchBox, cx, inputCls } from "./kit";
@@ -114,20 +114,156 @@ function MoveModal({ ing, kind, onClose }: { ing: Ingredient; kind: MoveKind; on
 }
 
 /* ---------------- the "log a batch" quick form ---------------- */
-type Row = { key: number; ingredientId: string; qty: string; note: string };
+/* A row can carry a raw ingredient (consumed) or an inventory product (produced).
+   Empty rows wait for the item picker; `kind` becomes "ing" or "prod" once set. */
+type Row = { key: number; kind: "ing" | "prod" | ""; itemId: string; qty: string; note: string };
 let rowSeq = 0;
-const blankRow = (): Row => ({ key: ++rowSeq, ingredientId: "", qty: "", note: "" });
+const blankRow = (): Row => ({ key: ++rowSeq, kind: "", itemId: "", qty: "", note: "" });
 
-function BatchModal({ ingredients: ings, recipes, onClose }: { ingredients: Ingredient[]; recipes: Recipe[]; onClose: () => void }) {
+/* ---------- item picker (search + sort + ingredients/products tabs) ---------- */
+type PickKind = "all" | "ing" | "prod";
+type SortKey = "name" | "stock" | "price";
+
+function ItemPicker({ ingredients: ings, products, initialKind = "all", onPick, onClose }: {
+  ingredients: Ingredient[]; products: Product[]; initialKind?: PickKind;
+  onPick: (choice: { kind: "ing" | "prod"; id: string }) => void; onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [kind, setKind] = useState<PickKind>(initialKind);
+  const [sort, setSort] = useState<SortKey>("name");
+
+  const needle = q.trim().toLowerCase();
+  const ingRows = useMemo(() => {
+    let arr = ings.filter((i) => !needle || i.name.toLowerCase().includes(needle));
+    if (sort === "name") arr = [...arr].sort((a, b) => a.name.localeCompare(b.name));
+    else if (sort === "stock") arr = [...arr].sort((a, b) => b.stock - a.stock);
+    else /* price */ arr = [...arr].sort((a, b) => a.costPerUnit - b.costPerUnit);
+    return arr;
+  }, [ings, needle, sort]);
+
+  const prodRows = useMemo(() => {
+    let arr = products.filter((p) => p.active !== false && (!needle || p.name.toLowerCase().includes(needle)));
+    if (sort === "name") arr = [...arr].sort((a, b) => a.name.localeCompare(b.name));
+    else if (sort === "stock") arr = [...arr].sort((a, b) => (b.stock ?? -1) - (a.stock ?? -1));
+    else /* price */ arr = [...arr].sort((a, b) => a.price - b.price);
+    return arr;
+  }, [products, needle, sort]);
+
+  const empty = (kind === "ing" ? ingRows.length : kind === "prod" ? prodRows.length : ingRows.length + prodRows.length) === 0;
+
+  const Tab = ({ v, label, count }: { v: PickKind; label: string; count: number }) => (
+    <button
+      type="button"
+      onClick={() => setKind(v)}
+      className={cx("h-9 rounded-xl px-3.5 text-[12px] font-extrabold uppercase tracking-wide transition", kind === v ? "bg-white text-slate-900 shadow" : "text-slate-500 hover:text-slate-800")}
+    >
+      {label} <span className="adm-num ml-1 text-slate-400">{count}</span>
+    </button>
+  );
+
+  const ingRow = (i: Ingredient) => (
+    <button
+      key={`ing-${i.id}`} type="button"
+      onClick={() => { onPick({ kind: "ing", id: i.id }); onClose(); }}
+      className="group flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-slate-50"
+    >
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-700"><Icon name="orders" size={16} /></span>
+      <span className="min-w-0 flex-1">
+        <b className="block truncate text-[14px] text-slate-900">{i.name}</b>
+        <span className="text-[11.5px] text-slate-500">Raw ingredient · {perUnitRupee(i.costPerUnit)}/{i.unit}</span>
+      </span>
+      <span className="adm-num shrink-0 text-right text-[12.5px] font-bold text-slate-700">{fmtQty(i.stock, i.unit)} <span className="font-normal text-slate-400">left</span></span>
+    </button>
+  );
+
+  const prodRow = (p: Product) => (
+    <button
+      key={`prod-${p.id}`} type="button"
+      onClick={() => { onPick({ kind: "prod", id: p.id }); onClose(); }}
+      className="group flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left transition hover:border-slate-300 hover:bg-slate-50"
+    >
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700"><Icon name="box" size={16} /></span>
+      <span className="min-w-0 flex-1">
+        <b className="block truncate text-[14px] text-slate-900">{p.name}</b>
+        <span className="text-[11.5px] text-slate-500">Inventory · {rupee(p.price)}{p.category ? ` · ${p.category}` : ""}</span>
+      </span>
+      <span className="adm-num shrink-0 text-right text-[12.5px] font-bold text-slate-700">{p.stock === null ? "untracked" : `${p.stock} in stock`}</span>
+    </button>
+  );
+
+  return (
+    <Modal
+      open wide onClose={onClose}
+      title={<span className="flex items-center gap-2.5"><Icon name="box" size={18} className="text-red-600" /> Pick an item</span>}
+      footer={<Btn onClick={onClose}>Cancel</Btn>}
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex-1">
+            <SearchBox value={q} onChange={setQ} placeholder="Search ingredients or inventory…" />
+          </div>
+          <select
+            className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-[13px] font-semibold text-slate-700 outline-none focus:border-slate-400"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            aria-label="Sort by"
+          >
+            <option value="name">Sort: Name (A–Z)</option>
+            <option value="stock">Sort: Stock (high → low)</option>
+            <option value="price">Sort: Price (low → high)</option>
+          </select>
+        </div>
+        <div className="flex gap-1 rounded-2xl bg-slate-100 p-1">
+          <Tab v="all" label="All" count={ingRows.length + prodRows.length} />
+          <Tab v="ing" label="Ingredients" count={ingRows.length} />
+          <Tab v="prod" label="Inventory" count={prodRows.length} />
+        </div>
+        <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+          {empty && <Empty icon="box" title="Nothing matched">Try a different search.</Empty>}
+          {kind !== "prod" && ingRows.length > 0 && (
+            <>
+              {kind === "all" && <div className="pt-1 text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-400">Raw ingredients</div>}
+              {ingRows.map(ingRow)}
+            </>
+          )}
+          {kind !== "ing" && prodRows.length > 0 && (
+            <>
+              {kind === "all" && <div className="pt-2 text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-400">Inventory items</div>}
+              {prodRows.map(prodRow)}
+            </>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function BatchModal({ ingredients: ings, products, recipes, onClose }: { ingredients: Ingredient[]; products: Product[]; recipes: Recipe[]; onClose: () => void }) {
   const { act, confirm, toast } = useAdmin();
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [rows, setRows] = useState<Row[]>([blankRow()]);
   const [busy, setBusy] = useState(false);
   const [recipeId, setRecipeId] = useState("");
+  const [recipeOpen, setRecipeOpen] = useState(false);
+  const recipeBoxRef = useRef<HTMLDivElement>(null);
+  /* Close the recipe dropdown on a click outside it. Using a listener (not a
+     fullscreen backdrop) keeps the modal's own × close button clickable while
+     the dropdown is open. */
+  useEffect(() => {
+    if (!recipeOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!recipeBoxRef.current?.contains(e.target as Node)) setRecipeOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [recipeOpen]);
   const [saveRecipe, setSaveRecipe] = useState(false);
-  const byId = useMemo(() => new Map(ings.map((i) => [i.id, i])), [ings]);
+  const [pickFor, setPickFor] = useState<number | null>(null); // row key the picker opens for
+  const ingById = useMemo(() => new Map(ings.map((i) => [i.id, i])), [ings]);
+  const prodById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
+  const selectedRecipe = recipeId ? recipeById.get(recipeId) : null;
 
   const setRow = (k: number, patch: Partial<Row>) => setRows((r) => r.map((x) => (x.key === k ? { ...x, ...patch } : x)));
   const add = () => setRows((r) => [...r, blankRow()]);
@@ -135,51 +271,71 @@ function BatchModal({ ingredients: ings, recipes, onClose }: { ingredients: Ingr
 
   const loadRecipe = (rid: string) => {
     setRecipeId(rid);
+    setRecipeOpen(false);
     if (!rid) return;
     const r = recipeById.get(rid);
     if (!r) return;
     /* Only ingredients that still exist get filled; a removed one is dropped
        quietly rather than showing an unresolvable row. */
     const filled: Row[] = r.items
-      .filter((it) => byId.has(it.ingredientId))
-      .map((it) => ({ key: ++rowSeq, ingredientId: it.ingredientId, qty: String(it.qty), note: it.note }));
+      .filter((it) => ingById.has(it.ingredientId))
+      .map((it) => ({ key: ++rowSeq, kind: "ing" as const, itemId: it.ingredientId, qty: String(it.qty), note: it.note }));
     setRows(filled.length ? filled : [blankRow()]);
-    if (!name.trim()) setName(r.name);
-    if (!note.trim() && r.note) setNote(r.note);
+    /* The batch name becomes the recipe name — this is what shows in the ledger
+       as "Used in <name>", which the client wants to be the recipe's own name. */
+    setName(r.name);
+    if (r.note) setNote(r.note);
   };
 
-  const removeRecipe = async () => {
-    const r = recipeById.get(recipeId);
+  const clearRecipe = () => {
+    setRecipeId("");
+    setRecipeOpen(false);
+  };
+
+  const removeRecipe = async (rid: string) => {
+    const r = recipeById.get(rid);
     if (!r) return;
     const ok = await confirm({ title: `Remove recipe "${r.name}"?`, body: "The recipe disappears from the picker. Past batches logged with it stay in the ledger.", ok: "Remove", danger: true });
     if (!ok) return;
     const res = await act("recipe.delete", { id: r.id });
     if (res.ok) {
       toast({ kind: "ok", title: `Recipe "${r.name}" removed.` });
-      setRecipeId("");
+      if (recipeId === rid) setRecipeId("");
     }
   };
 
-  const uses = rows.map((r) => ({ r, ing: byId.get(r.ingredientId), qty: Number(r.qty) || 0 })).filter((u) => u.ing && u.qty > 0);
-  const total = uses.reduce((s, u) => s + (u.ing ? u.qty * u.ing.costPerUnit : 0), 0);
-  const problems = uses.filter((u) => u.ing && u.qty > u.ing.stock);
+  /* Split rows into what the batch USED (ingredients) and what it PRODUCED (inventory). */
+  const uses = rows
+    .filter((r) => r.kind === "ing" && r.itemId)
+    .map((r) => ({ r, ing: ingById.get(r.itemId)!, qty: Number(r.qty) || 0 }))
+    .filter((u) => u.ing && u.qty > 0);
+  const produces = rows
+    .filter((r) => r.kind === "prod" && r.itemId)
+    .map((r) => ({ r, prod: prodById.get(r.itemId)!, qty: Math.floor(Number(r.qty) || 0) }))
+    .filter((p) => p.prod && p.qty > 0);
+  const total = uses.reduce((s, u) => s + u.qty * u.ing.costPerUnit, 0);
+  const problems = uses.filter((u) => u.qty > u.ing.stock);
 
   const save = async () => {
     if (!name.trim()) return toast({ kind: "err", title: "Give the batch a name." });
-    if (!uses.length) return toast({ kind: "err", title: "Add at least one ingredient." });
-    if (problems.length) return toast({ kind: "err", title: `Not enough ${problems[0].ing!.name} on hand.` });
+    if (!uses.length && !produces.length) return toast({ kind: "err", title: "Add at least one ingredient or inventory item." });
+    if (problems.length) return toast({ kind: "err", title: `Not enough ${problems[0].ing.name} on hand.` });
     setBusy(true);
-    const r = await act<Batch>("batch.save", { name, note, uses: uses.map((u) => ({ ingredientId: u.ing!.id, qty: u.qty, note: u.r.note })) });
+    const r = await act<Batch>("batch.save", {
+      name, note,
+      uses: uses.map((u) => ({ ingredientId: u.ing.id, qty: u.qty, note: u.r.note })),
+      produces: produces.map((p) => ({ productId: p.prod.id, qty: p.qty, note: p.r.note })),
+    });
     if (!r.ok) { setBusy(false); return; }
-    if (saveRecipe) {
-      /* The user asked us to remember these rows for next time. If a recipe
-         with this name already exists, recipe.save overwrites it, which is
-         what they want when they tweaked the quantities. */
-      const items = uses.map((u) => ({ ingredientId: u.ing!.id, qty: u.qty, note: u.r.note }));
+    if (saveRecipe && uses.length) {
+      /* The user asked us to remember these rows for next time. Recipes still
+         only hold the ingredient side — produced items are logged ad-hoc. */
+      const items = uses.map((u) => ({ ingredientId: u.ing.id, qty: u.qty, note: u.r.note }));
       await act("recipe.save", { name, note, items });
     }
     setBusy(false);
-    toast({ kind: "ok", title: `Batch "${r.result.name}" logged — ${rupee(r.result.totalCost)} in ingredients.`, body: saveRecipe ? "Saved as a recipe for next time." : undefined });
+    const madeMsg = produces.length ? ` · made ${produces.reduce((s, p) => s + p.qty, 0)} inventory unit${produces.reduce((s, p) => s + p.qty, 0) === 1 ? "" : "s"}` : "";
+    toast({ kind: "ok", title: `Batch "${r.result.name}" logged — ${rupee(r.result.totalCost)} in ingredients${madeMsg}.`, body: saveRecipe ? "Saved as a recipe for next time." : undefined });
     onClose();
   };
 
@@ -204,13 +360,67 @@ function BatchModal({ ingredients: ings, recipes, onClose }: { ingredients: Ingr
     >
       <div className="space-y-4">
         {recipes.length > 0 && (
-          <Field label="Repeat a saved recipe" hint="Picking one fills the rows below — still editable before you log the batch.">
-            <div className="flex gap-2">
-              <select className="h-10 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[14px] font-semibold text-slate-800 outline-none focus:border-slate-400" value={recipeId} onChange={(e) => loadRecipe(e.target.value)} aria-label="Pick a recipe">
-                <option value="">Pick a recipe…</option>
-                {recipes.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.items.length} ingredient{r.items.length === 1 ? "" : "s"})</option>)}
-              </select>
-              {recipeId && <Btn size="md" kind="red" onClick={removeRecipe} title="Remove this recipe">×</Btn>}
+          <Field label="Repeat a saved recipe" hint="Picking one fills the rows below and names the batch — still editable before you log it.">
+            <div className="relative" ref={recipeBoxRef}>
+              <div className="flex h-10 w-full items-center rounded-xl border border-slate-300 bg-white pr-1 text-left text-[14px] outline-none transition focus-within:border-slate-500 hover:border-slate-400">
+                <button
+                  type="button"
+                  onClick={() => setRecipeOpen((v) => !v)}
+                  className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-l-xl px-3 text-left"
+                  aria-haspopup="listbox"
+                  aria-expanded={recipeOpen}
+                >
+                  <span className="min-w-0 flex-1 truncate font-semibold text-slate-800">
+                    {selectedRecipe ? (
+                      <>
+                        {selectedRecipe.name}
+                        <span className="ml-1.5 font-normal text-slate-500">({selectedRecipe.items.length} ingredient{selectedRecipe.items.length === 1 ? "" : "s"})</span>
+                      </>
+                    ) : (
+                      <span className="text-slate-400">Pick a recipe…</span>
+                    )}
+                  </span>
+                  <Icon name="chevron" size={14} className={cx("shrink-0 text-slate-400 transition-transform", recipeOpen ? "-rotate-90" : "rotate-90")} />
+                </button>
+                {selectedRecipe && (
+                  <button
+                    type="button"
+                    onClick={clearRecipe}
+                    className="ml-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    aria-label="Clear selection"
+                    title="Clear selection"
+                  >
+                    <Icon name="x" size={13} />
+                  </button>
+                )}
+              </div>
+              {recipeOpen && (
+                <div role="listbox" className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-[0_10px_24px_-10px_rgba(15,23,42,.25)]">
+                    {recipes.map((r) => (
+                      <div key={r.id} className={cx("flex items-center gap-1 px-1", r.id === recipeId && "bg-slate-50")}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={r.id === recipeId}
+                          onClick={() => loadRecipe(r.id)}
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-slate-100"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-slate-800">{r.name}</span>
+                          <span className="shrink-0 text-[11.5px] text-slate-500">{r.items.length} ingredient{r.items.length === 1 ? "" : "s"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeRecipe(r.id)}
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          aria-label={`Remove recipe ${r.name}`}
+                          title={`Remove "${r.name}" from the picker`}
+                        >
+                          <Icon name="trash" size={14} />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           </Field>
         )}
@@ -220,21 +430,42 @@ function BatchModal({ ingredients: ings, recipes, onClose }: { ingredients: Ingr
         </div>
         <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
           {rows.map((r) => {
-            const ing = byId.get(r.ingredientId);
+            const ing = r.kind === "ing" ? ingById.get(r.itemId) : undefined;
+            const prod = r.kind === "prod" ? prodById.get(r.itemId) : undefined;
             const q = Number(r.qty) || 0;
             const over = ing && q > ing.stock;
             const cost = ing && q > 0 ? q * ing.costPerUnit : 0;
+            const unit = ing?.unit ?? (prod ? "pc" : "");
             return (
               <div key={r.key} className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 pb-2 last:border-0 last:pb-0">
-                <select className="h-10 min-w-[180px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[14px] outline-none focus:border-slate-400" value={r.ingredientId} onChange={(e) => setRow(r.key, { ingredientId: e.target.value })} aria-label="Ingredient">
-                  <option value="">Pick an ingredient…</option>
-                  {ings.map((i) => (
-                    <option key={i.id} value={i.id}>{i.name} ({fmtQty(i.stock, i.unit)} left)</option>
-                  ))}
-                </select>
+                <button
+                  type="button"
+                  onClick={() => setPickFor(r.key)}
+                  className="flex h-10 min-w-[200px] flex-1 items-center gap-2.5 rounded-xl border border-slate-300 bg-white px-3 text-left text-[14px] outline-none transition hover:border-slate-400"
+                  aria-label="Pick item"
+                >
+                  {ing ? (
+                    <>
+                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-700"><Icon name="orders" size={13} /></span>
+                      <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">{ing.name}</span>
+                      <span className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">Used</span>
+                      <span className="adm-num shrink-0 text-[11.5px] text-slate-500">{fmtQty(ing.stock, ing.unit)} left</span>
+                    </>
+                  ) : prod ? (
+                    <>
+                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-emerald-50 text-emerald-700"><Icon name="box" size={13} /></span>
+                      <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">{prod.name}</span>
+                      <span className="shrink-0 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Produced</span>
+                      <span className="adm-num shrink-0 text-[11.5px] text-slate-500">{prod.stock === null ? "untracked" : `${prod.stock} in stock`}</span>
+                    </>
+                  ) : (
+                    <span className="flex-1 text-slate-400">Pick an item…</span>
+                  )}
+                  <Icon name="chevron" size={14} className="shrink-0 rotate-90 text-slate-400" />
+                </button>
                 <div className="relative">
-                  <input type="number" min={0} step="0.001" inputMode="decimal" className={cx("h-10 w-28 rounded-xl border bg-white pl-3 pr-9 text-[14px] outline-none", over ? "border-red-400 focus:border-red-500" : "border-slate-300 focus:border-slate-400")} placeholder="Qty" value={r.qty} onChange={(e) => setRow(r.key, { qty: e.target.value })} aria-label="Quantity" />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400">{ing?.unit ?? ""}</span>
+                  <input type="number" min={0} step={r.kind === "prod" ? 1 : 0.001} inputMode="decimal" className={cx("h-10 w-28 rounded-xl border bg-white pl-3 pr-10 text-[14px] outline-none", over ? "border-red-400 focus:border-red-500" : "border-slate-300 focus:border-slate-400")} placeholder="Qty" value={r.qty} onChange={(e) => setRow(r.key, { qty: e.target.value })} aria-label="Quantity" />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">{unit}</span>
                 </div>
                 <input className="h-10 min-w-[140px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[13px] outline-none placeholder:text-slate-400 focus:border-slate-400" placeholder="Note (optional)" value={r.note} onChange={(e) => setRow(r.key, { note: e.target.value })} aria-label="Line note" maxLength={160} />
                 <span className="adm-num w-[88px] shrink-0 text-right text-[13px] font-bold">{cost > 0 ? rupee(cost) : "—"}</span>
@@ -243,11 +474,19 @@ function BatchModal({ ingredients: ings, recipes, onClose }: { ingredients: Ingr
             );
           })}
         </div>
-        <Btn size="sm" kind="soft" onClick={add}>+ Add ingredient</Btn>
+        <Btn size="sm" kind="soft" onClick={add}>+ Add item</Btn>
         <p className="rounded-xl bg-slate-50 px-4 py-2.5 text-[12px] text-slate-500">
-          Logging the batch takes the quantities out of stock and files one line per ingredient in the ledger. Costed at the current ₹/unit.
+          Raw ingredients come out of stock when the batch is logged. Inventory items go in — one line per item in the ledger. Costed at the current ₹/unit.
         </p>
       </div>
+      {pickFor !== null && (
+        <ItemPicker
+          ingredients={ings}
+          products={products}
+          onPick={(choice) => setRow(pickFor, { kind: choice.kind, itemId: choice.id, qty: "" })}
+          onClose={() => setPickFor(null)}
+        />
+      )}
     </Modal>
   );
 }
@@ -357,7 +596,7 @@ export default function IngredientsPage() {
 
       {edit && <IngredientModal initial={edit} onClose={() => setEdit(null)} />}
       {move && <MoveModal ing={move.ing} kind={move.kind} onClose={() => setMove(null)} />}
-      {batchOpen && <BatchModal ingredients={active} recipes={s.recipes ?? []} onClose={() => setBatchOpen(false)} />}
+      {batchOpen && <BatchModal ingredients={active} products={s.products ?? []} recipes={s.recipes ?? []} onClose={() => setBatchOpen(false)} />}
     </Page>
   );
 }

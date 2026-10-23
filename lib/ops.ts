@@ -405,7 +405,27 @@ export async function ingredientLedger(p: URLSearchParams): Promise<IngredientLe
     : [dir(sortCol), desc(M.createdAt), desc(M.id)];
 
   const [rows, byType, perIngredient, ingList] = await Promise.all([
-    db.select().from(M).where(where).orderBy(...orderBy).limit(size).offset((page - 1) * size),
+    db
+      .select({
+        id: M.id,
+        ingredientId: M.ingredientId,
+        ingredientName: M.ingredientName,
+        unit: M.unit,
+        qty: M.qty,
+        type: M.type,
+        cost: M.cost,
+        balanceAfter: M.balanceAfter,
+        batchId: M.batchId,
+        batchName: sql<string>`coalesce(${batches.name}, '')`,
+        note: M.note,
+        createdAt: M.createdAt,
+      })
+      .from(M)
+      .leftJoin(batches, eq(batches.id, M.batchId))
+      .where(where)
+      .orderBy(...orderBy)
+      .limit(size)
+      .offset((page - 1) * size),
     db
       .select({ type: M.type, qty: sql<number>`coalesce(sum(abs(${M.qty})), 0)::float`, cost: sql<number>`coalesce(sum(${M.cost}), 0)::float` })
       .from(M)
@@ -511,7 +531,7 @@ async function saveProduct(tx: Tx, a: Args) {
     stock: stockRaw === null ? null : Math.floor(stockRaw),
     lowAt: int(a.lowAt, 0, 9999, 4),
     description: str(a.description, 240),
-    image: str(a.image, 600),
+    image: str(a.image, 6_500_000), // room for a ~4 MB base64 data URL (plus headroom)
     tags: Array.isArray(a.tags) ? (a.tags as unknown[]).map((x) => str(x, 20).toLowerCase()).filter(Boolean).slice(0, 6) : [],
     active: a.active !== false,
   };
@@ -953,15 +973,17 @@ export function adminOp(op: string, a: Args) {
         return null;
       }
       case "batch.save": {
-        /* One production run: name + a list of {ingredientId, qty, note}. All lines
-           are checked against current stock first — a batch either books in full or not at all. */
+        /* One production run: name + a list of {ingredientId, qty, note} for raw stock
+           CONSUMED, and an optional list of {productId, qty, note} for inventory items
+           PRODUCED (added to sellable stock). All ingredient lines are checked against
+           current stock first — a batch either books in full or not at all. */
         const name = str(a.name, 120);
         const note = str(a.note, 300);
         if (!name) throw new ApiError("Give the batch a name (e.g. \"Chocolate cake × 2\").");
-        const raw = Array.isArray(a.uses) ? (a.uses as Args[]) : [];
-        if (!raw.length) throw new ApiError("Add at least one ingredient to the batch.");
+        const rawUses = Array.isArray(a.uses) ? (a.uses as Args[]) : [];
+        const rawProduces = Array.isArray(a.produces) ? (a.produces as Args[]) : [];
         const want: { ing: Ingredient; qty: number; note: string }[] = [];
-        for (const r of raw) {
+        for (const r of rawUses) {
           const iid = str(r?.ingredientId, 40);
           const q = round3(num(r?.qty));
           if (!iid || !(q > 0)) continue;
@@ -969,7 +991,15 @@ export function adminOp(op: string, a: Args) {
           if (q > ing.stock + 1e-6) throw new ApiError(`Only ${fmtQty(ing.stock)}${ing.unit} of ${ing.name} on hand — asked for ${fmtQty(q)}${ing.unit}.`);
           want.push({ ing, qty: q, note: str(r?.note, 160) });
         }
-        if (!want.length) throw new ApiError("Add at least one ingredient to the batch.");
+        const made: { prod: Product; qty: number; note: string }[] = [];
+        for (const r of rawProduces) {
+          const pid = str(r?.productId, 40);
+          const q = Math.floor(num(r?.qty));
+          if (!pid || !(q > 0)) continue;
+          const prod = await must(tx.select().from(products).where(eq(products.id, pid)), "Product");
+          made.push({ prod, qty: q, note: str(r?.note, 160) });
+        }
+        if (!want.length && !made.length) throw new ApiError("Add at least one ingredient or inventory item to the batch.");
         let totalCost = 0;
         for (const w of want) totalCost = round2(totalCost + w.qty * w.ing.costPerUnit);
         const [b] = await tx.insert(batches).values({ id: uid(), name, note, totalCost, createdAt: now }).returning();
@@ -985,6 +1015,23 @@ export function adminOp(op: string, a: Args) {
           /* Keep the ingredient's cached stock in sync for the next loop iteration
              in case the same ingredient appears twice in the batch. */
           w.ing.stock = newStock;
+        }
+        for (const m of made) {
+          /* An untracked product starts tracking now at the produced qty; a tracked
+             one is topped up. Either way we log a stock movement that points back
+             at the batch via its name as `ref`. */
+          const prev = m.prod.stock ?? 0;
+          const newStock = prev + m.qty;
+          await tx.update(products).set({ stock: newStock, updatedAt: now }).where(eq(products.id, m.prod.id));
+          await logMove(
+            tx,
+            { id: m.prod.id, name: m.prod.name },
+            { type: m.prod.stock === null ? "initial" : "added", ref: name, note: m.note || `Produced in ${name}` },
+            m.qty,
+            newStock,
+            now,
+          );
+          m.prod.stock = newStock;
         }
         return b;
       }
